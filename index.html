@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#971d22" />
+    <title>电商GTM AI经营分析系统 3.0</title>
+    <link rel="stylesheet" href="styles.css?v=20260624c" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="app-header glass">
+        <div class="brand-block">
+          <p class="eyebrow">Water Heater GTM Intelligence Copilot</p>
+          <h1>电商GTM AI经营分析系统 3.0</h1>
+          <p class="source-line" id="sourceLine">正在读取本地数据快照…</p>
+        </div>
+        <div class="header-actions">
+          <span class="freshness-pill" id="freshnessPill">数据更新中</span>
+          <button class="ai-action" id="openAiPanel" type="button">AI经营分析</button>
+          <button class="primary-action" id="openDataTools" type="button">数据工具</button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="tabs" aria-label="一级模块" id="tabs"></nav>
+
+        <section class="filter-panel glass" aria-label="全局筛选">
+          <div class="filter-row primary-filters">
+            <label class="field date-field">
+              <span>开始日期</span>
+              <input id="startDate" type="date" />
+            </label>
+            <label class="field date-field">
+              <span>结束日期</span>
+              <input id="endDate" type="date" />
+            </label>
+            <div class="multi-filter" id="channelFilter"></div>
+            <div class="multi-filter" id="businessFilter"></div>
+            <div class="multi-filter" id="shapeFilter"></div>
+            <button class="ghost-action more-toggle" id="moreFilters" type="button" aria-expanded="false">更多筛选</button>
+            <button class="reset-action" id="resetFilters" type="button">重置筛选</button>
+          </div>
+          <div class="filter-row secondary-filters" id="secondaryFilters" hidden>
+            <div class="multi-filter" id="seriesFilter"></div>
+            <div class="multi-filter" id="coreFilter"></div>
+            <div class="multi-filter" id="positionFilter"></div>
+            <label class="field disabled-field">
+              <span>升数段</span>
+              <input type="text" value="待补充字段" disabled />
+            </label>
+            <label class="field disabled-field">
+              <span>区域</span>
+              <input type="text" value="待补充字段" disabled />
+            </label>
+          </div>
+          <div class="filter-summary" id="filterSummary" aria-live="polite"></div>
+        </section>
+
+        <div id="ai-panel" class="ai-panel glass" hidden aria-live="polite"></div>
+
+        <section id="dashboardContent" aria-live="polite"></section>
+
+        <footer class="methodology glass">
+          <div>
+            <p class="eyebrow">Source &amp; Methodology</p>
+            <h2>数据来源与口径</h2>
+          </div>
+          <div class="methodology-grid" id="methodology"></div>
+        </footer>
+      </main>
+    </div>
+
+    <aside class="data-drawer" id="dataDrawer" aria-hidden="true" aria-labelledby="drawerTitle">
+      <div class="drawer-backdrop" data-close-drawer></div>
+      <section class="drawer-panel" role="dialog" aria-modal="true">
+        <div class="drawer-header">
+          <div>
+            <p class="eyebrow">Data Workspace</p>
+            <h2 id="drawerTitle">数据工具</h2>
+          </div>
+          <button class="close-button" type="button" data-close-drawer aria-label="关闭数据工具">关闭</button>
+        </div>
+        <div class="upload-grid">
+          <label class="upload-card">
+            <span>销售数据</span>
+            <small>支持多份 .xlsx</small>
+            <input type="file" accept=".xlsx,.xls" multiple data-upload="销售数据" />
+          </label>
+          <label class="upload-card">
+            <span>产品索引表</span>
+            <small>系列 / 核心品 / 分类</small>
+            <input type="file" accept=".xlsx,.xls" data-upload="产品索引表" />
+          </label>
+          <label class="upload-card">
+            <span>出库数据</span>
+            <small>2025 / 2026 出库明细</small>
+            <input type="file" accept=".xlsx,.xls" data-upload="出库数据" />
+          </label>
+          <label class="upload-card">
+            <span>行业数据</span>
+            <small>奥维月度监测</small>
+            <input type="file" accept=".xlsx,.xls" data-upload="行业数据" />
+          </label>
+        </div>
+        <div class="upload-status" id="uploadStatus">当前页面使用构建时的数据快照；选择新文件后会展示待刷新清单。</div>
+        <div class="drawer-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Quality Check</p>
+              <h3>数据体检</h3>
+            </div>
+          </div>
+          <div class="diagnostic-grid" id="diagnosticGrid"></div>
+          <div class="diagnostic-notes" id="diagnosticNotes"></div>
+        </div>
+      </section>
+    </aside>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="data/water-heater-data.js?v=20260624a"></script>
+    <script type="module" src="app.js?v=20260624d"></script>
+  </body>
+</html>
