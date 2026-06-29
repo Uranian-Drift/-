@@ -46,6 +46,18 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
   const uniqueSorted = (values) => [...new Set(values.filter((value) => value !== "" && value != null))]
     .sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
+  const SHAPE_BREAKDOWN_MODES = {
+    original: {
+      label: "原始形态",
+      subtitle: "严格使用产品索引表“分类”字段",
+      column: "形态分类",
+    },
+    butterflyLiter: {
+      label: "拆分蝶翼 16L/18L",
+      subtitle: "蝶翼按系列拆分：M2=18L，M0/M1=16L；其他形态保持原分类",
+      column: "形态 / 升数",
+    },
+  };
   const dimValue = (record, key) => {
     if (key === "channel") return record.channel || "未标注";
     if (key === "business") return record.business || "未标注";
@@ -54,6 +66,14 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     if (key === "core") return record.product.core ? "核心品" : "非核心品";
     if (key === "position") return record.product.position || "未标注";
     return "";
+  };
+  const shapeStructureValue = (record) => {
+    const shape = dimValue(record, "shape");
+    if (state.shapeBreakdownMode !== "butterflyLiter" || shape !== "蝶翼") return shape;
+    const series = String(record.product.series || "").trim().toUpperCase();
+    if (series === "M2") return "蝶翼 18L（M2系列）";
+    if (series === "M0" || series === "M1") return "蝶翼 16L（M0/M1系列）";
+    return "蝶翼 未标注升数";
   };
 
   const FILTERS = {
@@ -74,6 +94,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     end: maxDate,
     priceLower: 2000,
     priceUpper: 4000,
+    shapeBreakdownMode: "original",
     selections: Object.fromEntries(Object.entries(FILTERS).map(([key, spec]) => [key, new Set(spec.options)])),
   };
   const aiState = {
@@ -265,9 +286,13 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     const trend = dailyTrend(currentRows, priorRows);
     const channels = ranking(currentRows, priorRows, (row) => dimValue(row, "channel"));
     const businesses = ranking(currentRows, priorRows, (row) => dimValue(row, "business"));
-    const shapes = ranking(currentRows, priorRows, (row) => dimValue(row, "shape"));
+    const shapeMode = SHAPE_BREAKDOWN_MODES[state.shapeBreakdownMode] || SHAPE_BREAKDOWN_MODES.original;
+    const shapes = ranking(currentRows, priorRows, shapeStructureValue);
     const totalAmount = metricSummary(currentRows).amount;
     const structureCards = shapes.slice(0, 4).map((item) => `<div class="structure-card"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small></div>`).join("");
+    const shapeModeSelector = `<div class="shape-mode-bar" role="group" aria-label="形态结构展示方式">
+      ${Object.entries(SHAPE_BREAKDOWN_MODES).map(([mode, spec]) => `<button type="button" class="shape-mode-button ${state.shapeBreakdownMode === mode ? "active" : ""}" data-shape-breakdown="${escapeHtml(mode)}">${escapeHtml(spec.label)}</button>`).join("")}
+    </div>`;
     const structureRows = shapes.map((item) => {
       const share = totalAmount !== 0 ? item.amount / totalAmount : NaN;
       const indexDelta = Number.isFinite(item.salesIndex) && Number.isFinite(item.prior.salesIndex) ? item.salesIndex - item.prior.salesIndex : NaN;
@@ -277,7 +302,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     return `${renderSalesKpis(currentRows, priorRows)}
       <section class="content-grid">
         ${panel("销售额分日趋势", "按支付日期汇总，与上年同期同日比较", rankList(trend, (item) => formatWan(item.amount)), "daily-sales", { unit: "单位 / 元" })}
-        ${panel("形态结构", "严格使用产品索引表“分类”字段", `<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无分类数据</span>'}</div>${table(["形态分类", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], structureRows, 620)}`, "shape-structure")}
+        ${panel("形态结构", shapeMode.subtitle, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无分类数据</span>'}</div>${table([shapeMode.column, "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], structureRows, 620)}`, "shape-structure")}
         ${panel("渠道销售排行", "金额降序，条形长度表示销售贡献", rankList(channels), "channel-ranking")}
         ${panel("业务部销售排行", "组织维度销售金额与同比", rankList(businesses), "business-ranking")}
       </section>`;
@@ -793,6 +818,12 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
   function attachDynamicEvents() {
     document.querySelectorAll("[data-download-panel]").forEach((button) => button.addEventListener("click", () => downloadPanel(button.dataset.downloadPanel)));
+    document.querySelectorAll("[data-shape-breakdown]").forEach((button) => button.addEventListener("click", () => {
+      const mode = button.dataset.shapeBreakdown;
+      if (!SHAPE_BREAKDOWN_MODES[mode] || state.shapeBreakdownMode === mode) return;
+      state.shapeBreakdownMode = mode;
+      renderDashboard();
+    }));
     const search = document.getElementById("accountingSearch");
     if (search) search.addEventListener("input", () => {
       const query = search.value.trim().toLowerCase();
