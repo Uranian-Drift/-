@@ -530,8 +530,8 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     const lower = Math.min(state.priceLower, state.priceUpper);
     const upper = Math.max(state.priceLower, state.priceUpper);
     const rangeLabel = `${formatInteger(lower)}–${formatInteger(upper)}元`;
-    const brandRanks = oviRanking(rows, priorRows, (row) => row.brand);
-    const marketBrandCount = uniqueSorted(rows.map((row) => row.brand)).length;
+    const brandRanks = oviRanking(rangeRows, priorRangeRows, (row) => row.brand);
+    const marketBrandCount = uniqueSorted(rangeRows.map((row) => row.brand)).length;
     const rankIndex = brandRanks.findIndex((item) => item.name === DATA.meta.brand);
     const trendItems = months.map((month) => {
       const monthRows = rows.filter((row) => row.month === month);
@@ -581,11 +581,11 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       ${metricCard(`${rangeLabel}销额市占`, Number.isFinite(rangeSalesShare) ? `${(rangeSalesShare * 100).toFixed(1)}%` : "-", `同比净值差 ${formatSignedPoint(rangeSalesShare - priorRangeSalesShare)}`, rangeSalesShare - priorRangeSalesShare, "所选价格区间内方太销额 ÷ 市场销额")}
       ${metricCard(`${rangeLabel}销量市占`, Number.isFinite(rangeQtyShare) ? `${(rangeQtyShare * 100).toFixed(1)}%` : "-", `同比净值差 ${formatSignedPoint(rangeQtyShare - priorRangeQtyShare)}`, rangeQtyShare - priorRangeQtyShare, "所选价格区间内方太销量 ÷ 市场销量")}
       ${metricCard("品牌均价", Number.isFinite(avgPrice) ? formatCurrency(avgPrice) : "-", `同比 ${formatSignedPct(ratioChange(avgPrice, priorAvg))}`, ratioChange(avgPrice, priorAvg), "方太销额 ÷ 方太销量")}
-      ${metricCard("品牌排名", rankIndex >= 0 ? `第 ${rankIndex + 1} 名` : "-", `市场品牌 ${formatInteger(marketBrandCount)} 个`, NaN, "按筛选期销额降序")}
+      ${metricCard("品牌排名", rankIndex >= 0 ? `第 ${rankIndex + 1} 名` : "-", `${rangeLabel}市场品牌 ${formatInteger(marketBrandCount)} 个`, NaN, "按所选价格区间内品牌销额降序")}
     </section>
       <section class="content-grid">
         ${panel(months.length > 1 ? "品牌销额市占趋势" : "品牌销额市占", months.length > 1 ? "按奥维月份汇总" : `最新可用月份 ${months[0] || DATA.meta.oviMonthMax}`, rankList(trendItems, (item) => `${(item.value * 100).toFixed(1)}%`, () => ""), "ovi-share-trend")}
-        ${panel("品牌排名", "燃气热水器线上市场，按销额降序展示 Top 30", rankList(brandRanks), "ovi-brand-ranking")}
+        ${panel("品牌排名", `燃气热水器线上市场，按${rangeLabel}区间销额降序展示 Top 30`, rankList(brandRanks), "ovi-brand-ranking")}
         ${panel("型号单价与销量", `仅展示品牌配置：${DATA.meta.brand}；单价=型号销额÷型号销量`, table(["型号", "销量", "销额", "单价", "同比"], modelRows, 680), "ovi-model-ranking", { className: "span-2" })}
         ${panel("价位段结构", "产品定位已改为奥维成交均价价位段；边界按左闭右开划分", `<div class="structure-cards">${priceBandCards}</div>${table(["价位段", "市场销额", "市场销量", "销额结构", "市场均价", `${DATA.meta.brand}销额占比`, "同比"], priceBandRows, 820)}`, "ovi-price-bands", { className: "span-2" })}
         ${panel("升数段结构", "直接使用奥维“升数段”字段", table(["升数段", "销额", "销量", "均价", "同比"], volumeRows, 620), "ovi-volume", { className: "span-2" })}
