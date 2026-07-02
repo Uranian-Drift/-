@@ -37,6 +37,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
   const TAB_DEFS = [
     ["category", "品类销售"],
+    ["store", "店铺维度"],
     ["core", "核心型号"],
     ["outbound", "出库与动销"],
     ["income", "经营指标"],
@@ -58,6 +59,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       column: "形态 / 升数",
     },
   };
+  const storeValue = (record) => record.store || "未标注店铺";
   const dimValue = (record, key) => {
     if (key === "channel") return record.channel || "未标注";
     if (key === "business") return record.business || "未标注";
@@ -95,6 +97,8 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     priceLower: 2000,
     priceUpper: 4000,
     shapeBreakdownMode: "original",
+    storeSelected: "",
+    storeSort: "desc",
     selections: Object.fromEntries(Object.entries(FILTERS).map(([key, spec]) => [key, new Set(spec.options)])),
   };
   const aiState = {
@@ -278,6 +282,120 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
   function table(headers, rows, minWidth = 720) {
     return `<div class="table-wrap"><table class="data-table" style="min-width:${minWidth}px"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  }
+
+  function storeSummaries(rows) {
+    return [...groupRows(rows, storeValue).entries()]
+      .map(([name, groupedRows]) => ({ name, ...metricSummary(groupedRows) }))
+      .sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), "zh-CN"));
+  }
+
+  function ensureStoreSelection(rows) {
+    const stores = storeSummaries(rows);
+    if (!stores.length) {
+      state.storeSelected = "";
+      return stores;
+    }
+    if (!state.storeSelected || !stores.some((item) => item.name === state.storeSelected)) {
+      state.storeSelected = stores[0].name;
+    }
+    return stores;
+  }
+
+  function productStructureRows(storeRows, priorStoreRows) {
+    const currentMap = groupRows(storeRows, (row) => String(row.productId));
+    const priorMap = groupRows(priorStoreRows, (row) => String(row.productId));
+    const total = metricSummary(storeRows).amount;
+    const direction = state.storeSort === "asc" ? 1 : -1;
+    return [...currentMap.entries()]
+      .map(([productId, rows]) => {
+        const product = rows[0]?.product || {};
+        const current = metricSummary(rows);
+        const prior = metricSummary(priorMap.get(productId) || []);
+        return {
+          productId,
+          series: product.series || "未分系列",
+          shape: product.shape || "未分类",
+          name: product.name || product.code || "未识别产品",
+          code: product.code || "",
+          ...current,
+          share: total ? current.amount / total : NaN,
+          yoy: ratioChange(current.amount, prior.amount),
+        };
+      })
+      .sort((a, b) => direction * (a.amount - b.amount) || String(a.name).localeCompare(String(b.name), "zh-CN"));
+  }
+
+  function renderStore() {
+    const currentRows = salesForRange(state.start, state.end);
+    const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
+    const stores = ensureStoreSelection(currentRows);
+    if (!stores.length) {
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>当前筛选无店铺数据</h2><p>调整日期或分类筛选后再查看。</p></div></div>';
+    }
+
+    const selectedStore = state.storeSelected;
+    const storeRows = currentRows.filter((row) => storeValue(row) === selectedStore);
+    const priorStoreRows = priorRows.filter((row) => storeValue(row) === selectedStore);
+    const current = metricSummary(storeRows);
+    const prior = metricSummary(priorStoreRows);
+    const overall = metricSummary(currentRows);
+    const amountChange = ratioChange(current.amount, prior.amount);
+    const qtyChange = ratioChange(current.qty, prior.qty);
+    const avgChange = ratioChange(current.avgPrice, prior.avgPrice);
+    const storeShare = overall.amount ? current.amount / overall.amount : NaN;
+    const productsByStore = productStructureRows(storeRows, priorStoreRows);
+    const series = ranking(storeRows, priorStoreRows, (row) => dimValue(row, "series"), 30);
+    const shapes = ranking(storeRows, priorStoreRows, shapeStructureValue, 30);
+    const channels = ranking(storeRows, priorStoreRows, (row) => dimValue(row, "channel"), 20);
+    const topSeries = series[0];
+    const topSeriesShare = topSeries && current.amount ? topSeries.amount / current.amount : NaN;
+    const selectedRank = stores.findIndex((item) => item.name === selectedStore);
+
+    const options = stores.map((item) => `<option value="${escapeHtml(item.name)}" ${item.name === selectedStore ? "selected" : ""}>${escapeHtml(item.name)}（${formatWan(item.amount)}）</option>`).join("");
+    const productRows = productsByStore.map((item) => `<tr data-search-row="${escapeHtml(`${item.series} ${item.shape} ${item.name} ${item.code}`.toLowerCase())}">
+      <td>${escapeHtml(item.series)}</td>
+      <td>${escapeHtml(item.shape)}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(item.code || "-")}</td>
+      <td>${formatInteger(item.qty)}</td>
+      <td>${formatCurrency(item.amount)}</td>
+      <td>${Number.isFinite(item.share) ? `${(item.share * 100).toFixed(1)}%` : "-"}</td>
+      <td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td>
+      <td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td>
+    </tr>`);
+    const storeRankRows = stores.slice(0, 30).map((item, index) => `<tr class="${item.name === selectedStore ? "highlight-row" : ""}">
+      <td>${index + 1}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${formatCurrency(item.amount)}</td>
+      <td>${formatInteger(item.qty)}</td>
+      <td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td>
+      <td>${overall.amount ? `${(item.amount / overall.amount * 100).toFixed(1)}%` : "-"}</td>
+    </tr>`);
+
+    return `<section class="store-control-panel glass">
+      <div class="store-control-copy"><p class="eyebrow">Store Drilldown</p><h2>店铺维度分析</h2><p>店铺来自销售 Excel 的客户字段；所有产品结构会跟随日期、渠道、业务部、形态、系列等全局筛选变化。</p></div>
+      <div class="store-controls">
+        <label class="range-field store-select-field"><span>选择店铺</span><select id="storeSelect">${options}</select></label>
+        <label class="range-field"><span>产品排序</span><select id="storeSort"><option value="desc" ${state.storeSort === "desc" ? "selected" : ""}>销售额：多到少</option><option value="asc" ${state.storeSort === "asc" ? "selected" : ""}>销售额：少到多</option></select></label>
+      </div>
+      <p class="price-range-summary">当前店铺：${escapeHtml(selectedStore)}；在当前筛选下排名第 ${selectedRank + 1} / ${formatInteger(stores.length)}。</p>
+    </section>
+    <section class="metric-grid">
+      ${metricCard("店铺销售额", formatCurrency(current.amount), `同比 ${formatSignedPct(amountChange)}`, amountChange, "所选店铺在筛选期内销售金额")}
+      ${metricCard("店铺销量", formatInteger(current.qty), `同比 ${formatSignedPct(qtyChange)}`, qtyChange, "所选店铺在筛选期内销售台量")}
+      ${metricCard("店铺均价", Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-", `同比 ${formatSignedPct(avgChange)}`, avgChange, "店铺销售额 ÷ 店铺销量")}
+      ${metricCard("店铺内SKU数", formatInteger(productsByStore.length), `有效明细 ${formatInteger(current.rows)} 行`, NaN, "所选店铺有销售记录的型号数")}
+      ${metricCard("店铺销售占比", Number.isFinite(storeShare) ? `${(storeShare * 100).toFixed(1)}%` : "-", "占当前全局筛选销售额", storeShare, "店铺销售额 ÷ 当前筛选销售额")}
+      ${metricCard("主力系列", topSeries ? topSeries.name : "-", topSeries ? `店铺内 ${formatRate(topSeriesShare)}` : "当前无系列数据", topSeriesShare, "按店铺内销售额最高系列")}
+    </section>
+    <section class="content-grid">
+      ${panel("店铺产品结构", "按产品销售额排序；占比为型号销售额 ÷ 所选店铺销售额", `<div class="search-row"><input id="storeProductSearch" type="search" placeholder="搜索系列、形态、型号或编码" /></div>${table(["系列", "形态", "型号", "产品编码", "销量", "销售额", "店铺内占比", "成交均价", "同比"], productRows, 1180)}`, "store-product-structure", { className: "span-2" })}
+      ${panel("店铺销售排名", "当前全局筛选下各店铺销售额降序，当前店铺高亮", table(["排名", "店铺", "销售额", "销量", "均价", "全局占比"], storeRankRows, 920), "store-ranking", { className: "span-2" })}
+      ${panel("店铺系列结构", "所选店铺内按系列拆分销售贡献", rankList(series), "store-series")}
+      ${panel("店铺形态结构", "形态口径继承品类页的蝶翼拆分开关", rankList(shapes), "store-shape")}
+      ${panel("店铺渠道结构", "同一店铺在不同渠道下的销售贡献", rankList(channels), "store-channel")}
+    </section>`;
   }
 
   function renderCategory() {
@@ -610,6 +728,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
   function renderDashboard() {
     updateFilterContext();
     if (state.tab === "category") content.innerHTML = renderCategory();
+    if (state.tab === "store") content.innerHTML = renderStore();
     if (state.tab === "core") content.innerHTML = renderCore();
     if (state.tab === "outbound") content.innerHTML = renderOutbound();
     if (state.tab === "income") content.innerHTML = renderRuntimeMetrics();
@@ -630,6 +749,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       series: selectedValues("series"),
       channels: selectedValues("channel"),
       departments: selectedValues("business"),
+      stores: state.tab === "store" && state.storeSelected ? [state.storeSelected] : [],
     };
   }
   window.getCurrentDashboardFilters = getCurrentDashboardFilters;
@@ -794,6 +914,12 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       document.getElementById("filterSummary").textContent = `当前筛选命中 ${formatInteger(total)} 行出库记录；业务部字段不在出库源表中，不参与本页筛选。`;
       return;
     }
+    if (state.tab === "store") {
+      const total = salesForRange(state.start, state.end).length;
+      const storeRows = state.storeSelected ? salesForRange(state.start, state.end).filter((row) => storeValue(row) === state.storeSelected) : [];
+      document.getElementById("filterSummary").textContent = `当前店铺维度命中 ${formatInteger(total)} 行销售记录；已选择店铺：${state.storeSelected || "无"}；店铺内产品排序：${state.storeSort === "asc" ? "少到多" : "多到少"}；店铺明细 ${formatInteger(storeRows.length)} 行。`;
+      return;
+    }
     const total = salesForRange(state.start, state.end).length;
     const active = SALES_FILTER_KEYS.filter((key) => state.selections[key].size !== FILTERS[key].options.length).map((key) => FILTERS[key].label);
     document.getElementById("filterSummary").textContent = `当前筛选命中 ${formatInteger(total)} 行销售记录${active.length ? `；已限制：${active.join("、")}` : "；所有分类维度为全部"}。`;
@@ -804,6 +930,8 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     state.end = maxDate;
     state.priceLower = 2000;
     state.priceUpper = 4000;
+    state.storeSelected = "";
+    state.storeSort = "desc";
     Object.entries(FILTERS).forEach(([key, spec]) => { state.selections[key] = new Set(spec.options); });
     document.getElementById("startDate").value = state.start;
     document.getElementById("endDate").value = state.end;
@@ -828,6 +956,21 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     if (search) search.addEventListener("input", () => {
       const query = search.value.trim().toLowerCase();
       document.querySelectorAll("[data-search-row]").forEach((row) => { row.hidden = !row.dataset.searchRow.includes(query); });
+    });
+    const storeProductSearch = document.getElementById("storeProductSearch");
+    if (storeProductSearch) storeProductSearch.addEventListener("input", () => {
+      const query = storeProductSearch.value.trim().toLowerCase();
+      document.querySelectorAll("[data-search-row]").forEach((row) => { row.hidden = !row.dataset.searchRow.includes(query); });
+    });
+    const storeSelect = document.getElementById("storeSelect");
+    if (storeSelect) storeSelect.addEventListener("change", () => {
+      state.storeSelected = storeSelect.value;
+      renderDashboard();
+    });
+    const storeSort = document.getElementById("storeSort");
+    if (storeSort) storeSort.addEventListener("change", () => {
+      state.storeSort = storeSort.value === "asc" ? "asc" : "desc";
+      renderDashboard();
     });
     const applyRange = document.getElementById("applyPriceRange");
     if (applyRange) applyRange.addEventListener("click", () => {
@@ -907,6 +1050,8 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       ["0 核算价行", formatInteger(d.zeroAccountingRows)],
       ["政策价覆盖", formatInteger(d.policyAvailableRows)],
       ["2026 政策价匹配", formatInteger(d.policyMatchedSales2026)],
+      ["店铺数量", formatInteger(d.storeCount)],
+      ["店铺缺失行", formatInteger(d.missingStoreRows)],
       ["有效出库行", formatInteger(d.outboundValidRows)],
       ["出库未匹配", formatInteger(d.outboundUnmatchedRows)],
       ["奥维明细", formatInteger(d.oviSourceRows)],
@@ -917,6 +1062,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
       `索引表 144 个产品中，系列字段未维护 ${d.missingSeriesProducts} 个；页面统一显示“未分系列”。`,
       "销售指数按销售金额 ÷ 核算价金额合计计算；分母为 0 时显示“-”。",
       `2026 政策价由政策价参照表按月份和产品名称匹配，命中 ${formatInteger(d.policyMatchedSales2026)} 行；价格偏差率按匹配行销售金额 ÷ 政策价金额－1。`,
+      `店铺维度使用销售 Excel 的“客户名称/客户”字段，当前有效店铺 ${formatInteger(d.storeCount)} 个，缺失 ${formatInteger(d.missingStoreRows)} 行。`,
       `出库有效记录 ${formatInteger(d.outboundValidRows)} 行，产品匹配 ${formatInteger(d.outboundCodeMatched + d.outboundNameMatched)} 行。`,
       `奥维已更新至 ${DATA.meta.oviMonthMax}；单价取奥维“单价”字段，价位段仍按六档左闭右开边界划分。`,
     ].map((note) => `<p>${escapeHtml(note)}</p>`).join("");
@@ -925,6 +1071,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
   function renderMethodology() {
     const items = [
       ["销售来源", `${DATA.meta.files[1]}；${DATA.meta.files[2]}。有效日期 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax}。`],
+      ["店铺维度", "店铺取销售 Excel 的客户字段：2025 表使用“客户名称”，2026 表使用“客户”；店铺内占比为型号销售额 ÷ 所选店铺销售额。"],
       ["产品分类", `${DATA.meta.files[0]}。系列、核心品、形态分类、定位、能效均直接取索引表。`],
       ["出库来源", `${DATA.meta.files[3]}。有效日期 ${DATA.meta.outboundDateMin} 至 ${DATA.meta.outboundDateMax}，渠道使用国补调整后口径。`],
       ["政策价来源", `${DATA.meta.files[4]}。按月份和产品名称匹配，非正政策价不参与。`],
