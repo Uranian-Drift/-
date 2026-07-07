@@ -165,7 +165,7 @@ import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
     const qty = rows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
     const accountingRows = rows.filter((row) => row.accounting != null);
     const accounting = accountingRows.reduce((sum, row) => sum + Number(row.accounting || 0), 0);
-    const policyRows = rows.filter((row) => row.policy != null && Number.isFinite(Number(row.policy)));
+    const policyRows = rows.filter((row) => row.policy != null && Number.isFinite(Number(row.policy)) && Number(row.policy) !== 0);
     const fullPromoCoverage = rows.length > 0 && rows.every((row) => row.promo != null);
     const policy = policyRows.reduce((sum, row) => sum + Number(row.policy || 0), 0);
     const policySales = policyRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
