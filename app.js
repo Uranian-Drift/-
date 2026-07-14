@@ -1,5 +1,5 @@
-import { createChatController } from "./ai/chat-controller.js";
-import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
+import { createDeepChatController } from "./ai/deep-chat-controller.js";
+import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
 if (window.WATER_HEATER_DATA_READY) {
   try {
@@ -127,8 +127,14 @@ if (window.WATER_HEATER_DATA_READY) {
   const aiState = {
     open: false,
     chat: null,
+    mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V45") || "deep"; } catch { return "deep"; } })(),
+    contextOpen: false,
   };
-  const chatController = createChatController({ records: sales, getDashboardFilters: getCurrentDashboardFilters });
+  const chatController = createDeepChatController({
+    dataSources: { sales, outbound, ovi, meta: DATA.meta },
+    getDashboardFilters: getCurrentDashboardFilters,
+    getBusinessContext: getSavedAiBusinessContext,
+  });
 
   const formatInteger = (value) => Math.round(Number(value || 0)).toLocaleString("zh-CN");
   const formatWan = (value) => `${Math.round(Number(value || 0) / 10000).toLocaleString("zh-CN")}万`;
@@ -350,7 +356,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function table(headers, rows, minWidth = 720) {
     const textHeaders = new Set(["日期", "店铺", "渠道", "业务部", "系列", "形态", "形态分类", "形态 / 升数", "新版形态分类", "型号", "产品编码", "经营分层", "主渠道", "主力渠道", "价位段", "升数段"]);
-    const centerHeaders = new Set(["排名", "优先级", "层级"]);
+    const centerHeaders = new Set(["排名", "优先级", "层级", "核心品"]);
     const columnKinds = headers.map((header) => centerHeaders.has(header) ? "center" : textHeaders.has(header) ? "text" : "number");
     const decoratedRows = rows.map((row) => {
       let columnIndex = 0;
@@ -489,7 +495,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (!state.showOperatingFocus) {
       return `<section class="focus-panel focus-panel-collapsed glass">
         <div class="focus-copy">
-          <p class="eyebrow">4.4 Operating Focus</p>
+          <p class="eyebrow">4.5 Operating Focus</p>
           <h2>经营重点已隐藏</h2>
           <p>需要时可重新展开，不影响下面各模块数据展示。</p>
         </div>
@@ -517,7 +523,7 @@ if (window.WATER_HEATER_DATA_READY) {
     ];
     return `<section class="focus-panel glass">
       <div class="focus-copy">
-        <p class="eyebrow">4.4 Operating Focus</p>
+        <p class="eyebrow">4.5 Operating Focus</p>
         <h2>经营重点</h2>
         <p>首页优先展示重点形态和核心型号，减少通品、效率品、未分类对判断的干扰。</p>
         <button class="focus-toggle-button" data-toggle-operating-focus type="button">隐藏经营重点</button>
@@ -562,8 +568,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const currentRows = salesForRange(state.start, state.end);
     const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
     const trend = dailyTrend(currentRows, priorRows);
-    const channels = ranking(currentRows, priorRows, (row) => dimValue(row, "channel"));
-    const businesses = ranking(currentRows, priorRows, (row) => dimValue(row, "business"));
+    const categoryModels = modelCatalog(currentRows, priorRows, "all");
     const shapeMode = SHAPE_BREAKDOWN_MODES[state.shapeBreakdownMode] || SHAPE_BREAKDOWN_MODES.original;
     const shapes = sortShapesByPriority(ranking(currentRows, priorRows, shapeStructureValue));
     const totalAmount = metricSummary(currentRows).amount;
@@ -633,13 +638,22 @@ if (window.WATER_HEATER_DATA_READY) {
       ? table([shapeMode.column, "层级", "本期销售额", "同期销售额", "销售同比", "本期销量", "同期销量", "销量同比", "总盘占比", "其他内占比", "均价", "销售指数"], newStructureRows, 1450)
       : table([shapeMode.column, "优先级", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], originalStructureRows, 720);
     const shapeModeDescription = `${shapeMode.subtitle}；蝶翼${state.splitButterfly ? "按M2=18L、M0/M1=16L拆分" : "合并展示"}${state.shapeBreakdownMode === "newClassification" ? "；点击其他可在本表中展开重点型号" : ""}`;
+    const modelRows = categoryModels.map((item, index) => {
+      const amountYoy = ratioChange(item.current.amount, item.prior.amount);
+      const avgPriceYoy = ratioChange(item.current.avgPrice, item.prior.avgPrice);
+      const indexDelta = Number.isFinite(item.current.salesIndex) && Number.isFinite(item.prior.salesIndex)
+        ? item.current.salesIndex - item.prior.salesIndex : NaN;
+      const share = totalAmount ? item.current.amount / totalAmount : NaN;
+      const searchText = `${item.product.series || ""} ${item.product.shape || ""} ${item.product.name || ""} ${item.product.code || item.key}`.toLowerCase();
+      return `<tr data-category-model-row="${escapeHtml(searchText)}"><td>${index + 1}</td><td>${escapeHtml(item.product.name || item.product.code || item.key)}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${escapeHtml(item.product.shape || "未分类")}</td><td>${item.product.core ? "核心品" : "非核心品"}</td><td>${formatWan(item.current.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td><td>${formatRate(share)}</td></tr>`;
+    });
+    const modelDetail = `<div class="search-row"><input id="categoryModelSearch" type="search" placeholder="搜索型号、编码、系列或形态" /></div>${table(["排名", "型号", "产品编码", "系列", "形态分类", "核心品", "销售额", "同期销售", "销售同比", "销量", "成交均价", "同期均价", "均价同比", "销售指数", "指数净值差", "销售占比"], modelRows, 1840)}`;
 
     return `${renderSalesKpis(currentRows, priorRows)}
       <section class="content-grid">
         ${panel("销售额分日趋势", "按支付日期汇总，与上年同期同日比较", rankList(trend, (item) => formatWan(item.amount)), "daily-sales", { unit: "单位 / 元" })}
         ${panel("形态结构", shapeModeDescription, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${structureTable}`, "shape-structure")}
-        ${panel("渠道销售排行", "金额降序，条形长度表示销售贡献", rankList(channels), "channel-ranking")}
-        ${panel("业务部销售排行", "组织维度销售金额与同比", rankList(businesses), "business-ranking")}
+        ${panel("型号经营明细", `当前共 ${formatInteger(categoryModels.length)} 个型号，默认按销售额从高到低排列`, modelDetail, "category-model-detail", { className: "span-2" })}
         ${renderDataHealthPanel()}
       </section>`;
   }
@@ -1013,6 +1027,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const currentRows = salesForRange(state.start, state.end);
     const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
     const items = ranking(currentRows, priorRows, (row) => dimValue(row, "channel"), 50);
+    const businessItems = ranking(currentRows, priorRows, (row) => dimValue(row, "business"), 50);
     const channelRow = (item, className = "") => {
       const indexDelta = Number.isFinite(item.salesIndex) && Number.isFinite(item.prior.salesIndex) ? item.salesIndex - item.prior.salesIndex : NaN;
       const avgPriceYoy = ratioChange(item.avgPrice, item.prior.avgPrice);
@@ -1031,8 +1046,16 @@ if (window.WATER_HEATER_DATA_READY) {
       channelRow(totalItem, "highlight-row"),
       ...items.map((item) => channelRow(item)),
     ];
+    const businessRows = businessItems.map((item, index) => {
+      const share = currentTotal.amount ? item.amount / currentTotal.amount : NaN;
+      const avgPriceYoy = ratioChange(item.avgPrice, item.prior.avgPrice);
+      const indexDelta = Number.isFinite(item.salesIndex) && Number.isFinite(item.prior.salesIndex)
+        ? item.salesIndex - item.prior.salesIndex : NaN;
+      return `<tr${index === 0 ? ' class="highlight-row"' : ""}><td>${index + 1}</td><td>${escapeHtml(item.name)}</td><td>${formatWan(item.amount)}</td><td>${formatRate(share)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td></tr>`;
+    });
     return `<p class="availability-note">当前数据没有成本字段，因此不推算毛利率；同期口径为上年同日期区间。</p>
       <section class="content-grid">
+        ${panel("业务部经营排行", "按销售额从高到低排列；展示业务规模、同比、量价和销售指数", table(["排名", "业务部", "销售额", "业务占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], businessRows, 1320), "business-efficiency-ranking", { className: "span-2" })}
         ${panel("渠道经营效率", "渠道贡献、同期销售与价格指标均来自有效销售数据", table(["渠道", "销售额", "渠道占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], rows, 1160), "channel-efficiency", { className: "span-2" })}
       </section>`;
   }
@@ -1050,15 +1073,33 @@ if (window.WATER_HEATER_DATA_READY) {
     if (aiState.open) renderAiPanel();
   }
 
+  const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V45";
+
+  function getSavedAiBusinessContext() {
+    const fallback = { currentGoal: "", priorities: "", campaigns: "", constraints: "", notes: "" };
+    try {
+      const parsed = JSON.parse(localStorage.getItem(AI_BUSINESS_CONTEXT_KEY) || "{}");
+      return { ...fallback, ...(parsed && typeof parsed === "object" ? parsed : {}) };
+    } catch { return fallback; }
+  }
+
+  function saveAiBusinessContext(context) {
+    try { localStorage.setItem(AI_BUSINESS_CONTEXT_KEY, JSON.stringify(context)); } catch { /* local memory unavailable */ }
+    showToast("经营背景已保存，下一次分析会自动使用");
+  }
+
   function getCurrentDashboardFilters() {
     const selectedValues = (key) => state.selections[key].size === FILTERS[key].options.length ? [] : [...state.selections[key]];
     return {
       startDate: state.start,
       endDate: state.end,
-      products: [],
-      models: [],
+      models: state.tab === "core" && state.selectedModel ? [state.selectedModel] : [],
       series: selectedValues("series"),
       channels: selectedValues("channel"),
+      shapes: selectedValues("shape"),
+      core: selectedValues("core"),
+      positions: selectedValues("position"),
+      businesses: selectedValues("business"),
       departments: selectedValues("business"),
       stores: state.tab === "store" && state.storeSelected ? [state.storeSelected] : [],
     };
@@ -1078,16 +1119,19 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderChatMeta(meta = {}) {
     const filters = meta.filters || {};
-    const products = (filters.products || []).length ? filters.products.join("、") : "全部产品";
+    const products = (filters.models || []).length ? filters.models.join("、") : "全部型号";
     const channels = (filters.channels || []).length ? filters.channels.join("、") : "全部渠道";
-    const comparison = meta.comparison?.type && meta.comparison.type !== "none" ? `对比 ${meta.comparison.startDate} 至 ${meta.comparison.endDate}` : "无对比";
-    const source = meta.source === "deepseek" ? `DeepSeek · ${meta.model || "deepseek-chat"}` : "本地安全摘要";
-    return `<div class="ai-message-meta"><span>${escapeHtml(source)}</span><span>${escapeHtml(`${filters.startDate || "-"} 至 ${filters.endDate || "-"}`)}</span><span>${escapeHtml(products)}</span><span>${escapeHtml(channels)}</span><span>${escapeHtml(comparison)}</span><span>${formatInteger(meta.rowCount)} 行</span></div>${meta.warning ? `<p class="ai-message-warning">${escapeHtml(meta.warning)}</p>` : ""}`;
+    const mode = AI_MODES[meta.mode]?.label || AI_MODES[aiState.mode]?.label || "深度分析";
+    const source = meta.source === "deepseek" ? `DeepSeek · ${meta.model || "deepseek-chat"}` : "本地证据分析";
+    const review = meta.reviewed ? "已完成二次复核" : "未启用二次复核";
+    const queryCount = Number(meta.queryCount || 0);
+    return `<div class="ai-message-meta"><span>${escapeHtml(source)}</span><span>${escapeHtml(mode)}</span><span>${escapeHtml(`${filters.startDate || "-"} 至 ${filters.endDate || "-"}`)}</span><span>${escapeHtml(products)}</span><span>${escapeHtml(channels)}</span><span>${queryCount} 项证据查询</span><span>${escapeHtml(review)}</span></div>${meta.warning ? `<p class="ai-message-warning">${escapeHtml(meta.warning)}</p>` : ""}`;
   }
 
   function renderChatMessage(message) {
     if (message.role === "user") return `<article class="ai-message user"><div class="ai-message-role">你</div><div class="ai-message-body"><p>${escapeHtml(message.content)}</p></div></article>`;
-    return `<article class="ai-message assistant ${message.error ? "error" : ""}"><div class="ai-message-role">AI</div><div class="ai-message-body">${formatAiAnswer(message.content)}${message.meta ? renderChatMeta(message.meta) : ""}</div></article>`;
+    const followUps = (message.followUps || []).slice(0, 4);
+    return `<article class="ai-message assistant ${message.error ? "error" : ""}"><div class="ai-message-role">AI</div><div class="ai-message-body">${formatAiAnswer(message.content)}${followUps.length ? `<div class="ai-followups">${followUps.map((item) => `<button type="button" data-ai-followup="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}</div>` : ""}${message.meta ? renderChatMeta(message.meta) : ""}</div></article>`;
   }
 
   function renderAiPanel() {
@@ -1095,23 +1139,38 @@ if (window.WATER_HEATER_DATA_READY) {
     const rows = salesForRange(state.start, state.end);
     const chat = aiState.chat || chatController.getState();
     const messages = chat.messages || [];
-    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>问我任何经营问题</strong><p>我会先把自然语言转成安全查询计划，在浏览器本地计算，再让 DeepSeek 解释结果。原始销售明细不会发送给模型。</p></div>`;
+    const stage = chat.stage || { label: "等待提问", progress: 0 };
+    const businessContext = getSavedAiBusinessContext();
+    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>把它当作经营分析师来用</strong><p>可以直接问“为什么”“问题在哪”“接下来怎么做”。4.5 会自动拆成多项查询，同时读取销售、出库、奥维和产品索引，并对结论做第二遍复核。</p></div>`;
+    const modeButtons = Object.entries(AI_MODES).map(([key, mode]) => `<button type="button" class="ai-mode-button ${aiState.mode === key ? "active" : ""}" data-ai-mode="${key}" ${chat.running ? "disabled" : ""}><strong>${escapeHtml(mode.label)}</strong><span>${escapeHtml(mode.description)}</span></button>`).join("");
 
     aiPanel.hidden = false;
     aiPanel.innerHTML = `<div class="ai-panel-header">
-      <div><p class="eyebrow">GTM AI Copilot</p><h2>AI经营对话</h2><p>当前看板范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条记录；明确提问条件优先于页面筛选。</p></div>
-      <div class="ai-panel-actions"><button id="clearAiConversation" class="ghost-action" type="button" ${chat.running ? "disabled" : ""}>清空对话</button><button id="closeAiPanel" class="close-button" type="button">收起AI面板</button></div>
+      <div><p class="eyebrow">GTM AI COPILOT 4.5</p><h2>深度经营分析</h2><p>当前范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条销售记录。你的问题会自动转成多项证据查询。</p></div>
+      <div class="ai-panel-actions"><button id="toggleAiContext" class="ghost-action" type="button">${aiState.contextOpen ? "收起经营背景" : "编辑经营背景"}</button><button id="clearAiConversation" class="ghost-action" type="button" ${chat.running ? "disabled" : ""}>清空对话</button><button id="closeAiPanel" class="close-button" type="button">收起AI面板</button></div>
     </div>
-    <div class="ai-scope-bar"><span>当前上下文</span><strong>${escapeHtml(state.start)} 至 ${escapeHtml(state.end)}</strong><span>${state.selections.channel.size === FILTERS.channel.options.length ? "全部渠道" : escapeHtml([...state.selections.channel].join("、"))}</span><span>会话记忆 ${Math.floor(messages.length / 2)} 轮</span><span>密钥由 Netlify 安全托管</span></div>
+    <div class="ai-mode-grid" aria-label="分析模式">${modeButtons}</div>
+    <section class="ai-context-editor" ${aiState.contextOpen ? "" : "hidden"}>
+      <div class="ai-context-heading"><div><strong>经营背景</strong><p>告诉AI近期目标、活动和约束，结论会更贴近实际业务。</p></div><button type="button" id="saveAiContext" class="ghost-action">保存背景</button></div>
+      <div class="ai-context-fields">
+        <label>当前目标<input id="aiContextGoal" value="${escapeHtml(businessContext.currentGoal || "")}" placeholder="例如：提升M2系列规模并守住价格"></label>
+        <label>优先事项<input id="aiContextPriorities" value="${escapeHtml(businessContext.priorities || "")}" placeholder="例如：京东自营、M1/M2/N核心品"></label>
+        <label>近期活动<input id="aiContextCampaigns" value="${escapeHtml(businessContext.campaigns || "")}" placeholder="例如：618返场、上新、渠道补贴"></label>
+        <label>业务约束<input id="aiContextConstraints" value="${escapeHtml(businessContext.constraints || "")}" placeholder="例如：不能大幅降价、库存有限"></label>
+        <label class="wide">补充说明<textarea id="aiContextNotes" rows="2" placeholder="可填写口径变化、异常订单、渠道特殊情况">${escapeHtml(businessContext.notes || "")}</textarea></label>
+      </div>
+    </section>
+    <div class="ai-scope-bar"><span>数据范围</span><strong>${escapeHtml(state.start)} 至 ${escapeHtml(state.end)}</strong><span>${state.selections.channel.size === FILTERS.channel.options.length ? "全部渠道" : escapeHtml([...state.selections.channel].join("、"))}</span><span>销售 + 出库 + 奥维 + 产品索引</span><span>会话记忆 ${Math.floor(messages.length / 2)} 轮</span><span>原始明细不发送</span></div>
+    ${chat.running ? `<div class="ai-analysis-progress"><div><strong>${escapeHtml(stage.label || "正在分析")}</strong><span>${Math.round(stage.progress || 0)}%</span></div><div class="ai-progress-track"><i style="width:${Math.max(4, Math.min(100, Number(stage.progress || 0)))}%"></i></div></div>` : ""}
     <div class="ai-recommendations" aria-label="推荐问题">${RECOMMENDED_QUESTIONS.map((question) => `<button type="button" data-ai-question="${escapeHtml(question)}" ${chat.running ? "disabled" : ""}>${escapeHtml(question)}</button>`).join("")}</div>
-    <section class="ai-chat-log" id="aiChatLog" aria-live="polite">${conversation}${chat.running ? `<div class="ai-thinking"><span class="ai-pulse"></span><span>正在理解问题、查询本地数据并生成回答…</span></div>` : ""}</section>
+    <section class="ai-chat-log" id="aiChatLog" aria-live="polite">${conversation}${chat.running ? `<div class="ai-thinking"><span class="ai-pulse"></span><span>${escapeHtml(stage.label || "正在分析")}</span></div>` : ""}</section>
     ${chat.error ? `<p class="ai-chat-error">${escapeHtml(chat.error)}</p>` : ""}
     <form class="ai-composer" id="aiComposer">
       <label for="aiQuestion">经营问题</label>
-      <textarea id="aiQuestion" rows="3" maxlength="500" placeholder="例如：18M2PRO最近表现如何？按京东和天猫拆一下。" ${chat.running ? "disabled" : ""}></textarea>
-      <div><span>Enter发送 · Shift+Enter换行</span><button class="ai-action" type="submit" ${chat.running ? "disabled" : ""}>${chat.running ? "分析中…" : "发送"}</button></div>
+      <textarea id="aiQuestion" rows="4" maxlength="1000" placeholder="例如：结合销售、出库和奥维，诊断本年M1/M2/N核心品增长质量，找出主要驱动、风险和未来30天动作。" ${chat.running ? "disabled" : ""}></textarea>
+      <div><span>Enter发送 · Shift+Enter换行</span><button class="ai-action" type="submit" ${chat.running ? "disabled" : ""}>${chat.running ? "分析中…" : "开始深度分析"}</button></div>
     </form>
-    <p class="ai-security-note">两阶段分析：DeepSeek只负责理解与解释，筛选、聚合、对比和异常计算均在本地白名单查询引擎完成；前端不保存API Key。</p>`;
+    <p class="ai-security-note">四阶段分析：理解问题 → 本地多查询取证 → 经营分析 → 独立复核。DeepSeek只接收聚合后的证据包，不接收订单级原始数据；前端不保存API Key。</p>`;
 
     attachAiPanelEvents();
     requestAnimationFrame(() => { const log = document.getElementById("aiChatLog"); if (log) log.scrollTop = log.scrollHeight; });
@@ -1125,14 +1184,33 @@ if (window.WATER_HEATER_DATA_READY) {
       document.getElementById("openAiPanel").focus();
     });
     document.getElementById("clearAiConversation").addEventListener("click", () => chatController.clear());
-    document.querySelectorAll("[data-ai-question]").forEach((button) => button.addEventListener("click", () => chatController.ask(button.dataset.aiQuestion)));
+    document.getElementById("toggleAiContext").addEventListener("click", () => {
+      aiState.contextOpen = !aiState.contextOpen;
+      renderAiPanel();
+    });
+    document.querySelectorAll("[data-ai-mode]").forEach((button) => button.addEventListener("click", () => {
+      aiState.mode = button.dataset.aiMode;
+      localStorage.setItem("WATER_HEATER_AI_MODE_V45", aiState.mode);
+      chatController.setMode(aiState.mode);
+    }));
+    document.querySelectorAll("[data-ai-question], [data-ai-followup]").forEach((button) => button.addEventListener("click", () => {
+      const value = button.dataset.aiQuestion || button.dataset.aiFollowup;
+      chatController.ask(value, { mode: aiState.mode });
+    }));
+    document.getElementById("saveAiContext").addEventListener("click", () => saveAiBusinessContext({
+      currentGoal: document.getElementById("aiContextGoal").value.trim(),
+      priorities: document.getElementById("aiContextPriorities").value.trim(),
+      campaigns: document.getElementById("aiContextCampaigns").value.trim(),
+      constraints: document.getElementById("aiContextConstraints").value.trim(),
+      notes: document.getElementById("aiContextNotes").value.trim(),
+    }));
     const composer = document.getElementById("aiComposer");
     const question = document.getElementById("aiQuestion");
     composer.addEventListener("submit", (event) => {
       event.preventDefault();
       const value = question.value.trim();
       if (!value) { question.focus(); return; }
-      chatController.ask(value);
+      chatController.ask(value, { mode: aiState.mode });
     });
     question.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); composer.requestSubmit(); }
@@ -1325,6 +1403,11 @@ if (window.WATER_HEATER_DATA_READY) {
     if (allModelSearch) allModelSearch.addEventListener("input", () => {
       const query = allModelSearch.value.trim().toLowerCase();
       document.querySelectorAll("[data-model-row]").forEach((row) => { row.hidden = !row.dataset.modelRow.includes(query); });
+    });
+    const categoryModelSearch = document.getElementById("categoryModelSearch");
+    if (categoryModelSearch) categoryModelSearch.addEventListener("input", () => {
+      const query = categoryModelSearch.value.trim().toLowerCase();
+      document.querySelectorAll("[data-category-model-row]").forEach((row) => { row.hidden = !row.dataset.categoryModelRow.includes(query); });
     });
     document.querySelectorAll("[data-toggle-operating-focus]").forEach((button) => button.addEventListener("click", () => {
       state.showOperatingFocus = !state.showOperatingFocus;

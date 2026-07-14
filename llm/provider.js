@@ -1,6 +1,6 @@
 import { AI_CONFIG } from "../config/ai-config.js";
 
-export async function callDeepSeek({ messages, mode = "answer", signal } = {}) {
+export async function callDeepSeek({ messages, mode = "answer", maxTokens, signal } = {}) {
   if (!Array.isArray(messages) || !messages.length) throw new Error("AI请求内容为空");
   const controller = signal ? null : new AbortController();
   const timeout = controller ? setTimeout(() => controller.abort(), AI_CONFIG.requestTimeoutMs) : null;
@@ -8,7 +8,7 @@ export async function callDeepSeek({ messages, mode = "answer", signal } = {}) {
     const response = await fetch(AI_CONFIG.functionUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, mode }),
+      body: JSON.stringify({ messages, mode, maxTokens }),
       signal: signal || controller?.signal,
     });
     const payload = await response.json().catch(() => ({}));

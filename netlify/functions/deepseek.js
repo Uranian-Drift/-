@@ -1,7 +1,13 @@
 const MODEL = "deepseek-chat";
 const ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
-const MAX_BODY_BYTES = 120000;
-const TIMEOUT_MS = 28000;
+const MAX_BODY_BYTES = 900000;
+const TIMEOUT_MS = 45000;
+const MODE_CONFIG = Object.freeze({
+  planner: { temperature: 0, maxTokens: 4200 },
+  analyst: { temperature: 0.35, maxTokens: 7000 },
+  reviewer: { temperature: 0.1, maxTokens: 6500 },
+  answer: { temperature: 0.25, maxTokens: 4200 },
+});
 
 const reply = (statusCode, body) => ({
   statusCode,
@@ -20,17 +26,20 @@ exports.handler = async (event) => {
   if (!Array.isArray(payload.messages) || !payload.messages.length || payload.messages.length > 16) return reply(400, { error: "messages格式无效" });
   const messages = payload.messages.map((message) => ({
     role: ["system", "user", "assistant"].includes(message?.role) ? message.role : "user",
-    content: String(message?.content || "").slice(0, 30000),
+    content: String(message?.content || "").slice(0, 700000),
   })).filter((message) => message.content);
   if (!messages.length) return reply(400, { error: "请求内容为空" });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    const modeConfig = MODE_CONFIG[payload.mode] || MODE_CONFIG.answer;
+    const requestedMax = Number(payload.maxTokens);
+    const maxTokens = Number.isFinite(requestedMax) ? Math.min(8000, Math.max(800, requestedMax)) : modeConfig.maxTokens;
     const response = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: MODEL, messages, temperature: payload.mode === "planner" ? 0 : 0.2, stream: false }),
+      body: JSON.stringify({ model: MODEL, messages, temperature: modeConfig.temperature, max_tokens: maxTokens, stream: false }),
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
