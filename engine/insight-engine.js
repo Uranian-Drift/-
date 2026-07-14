@@ -11,9 +11,6 @@ export function generateInsights(queryResult = {}) {
   const topChannel = (queryResult.channelGroups || []).sort((a, b) => b.salesAmount - a.salesAmount)[0];
   const topProduct = (queryResult.productGroups || []).sort((a, b) => b.salesAmount - a.salesAmount)[0];
 
-  if (Number.isFinite(current.discountDepth) && current.discountDepth > AI_CONFIG.thresholds.deepDiscount) {
-    insights.push({ type: "price_discount", level: "high", title: "折扣偏深", message: `当前折扣深度${pct(current.discountDepth)}，超过30%关注线。`, evidence: { discountDepth: current.discountDepth }, relatedDimensions: ["price"] });
-  }
   if (topChannel?.channelContribution > AI_CONFIG.thresholds.channelDependency) {
     insights.push({ type: "channel_dependency", level: "high", title: "渠道依赖", message: `${topChannel.name}贡献${pct(topChannel.channelContribution)}，单一渠道依赖较高。`, evidence: topChannel, relatedDimensions: ["channel"] });
   }

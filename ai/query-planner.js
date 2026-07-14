@@ -76,7 +76,7 @@ export function buildFallbackPlan({ question, dashboardFilters = {}, memory = []
   let intent = "summary";
   if (/周报|总结|报告/.test(question)) intent = "generate_report";
   else if (/为什么|下降|下滑|增长原因|变化原因/.test(question)) intent = "diagnose_change";
-  else if (/低价换量|价格|均价|折扣|恢复率/.test(question)) intent = "price_analysis";
+  else if (/低价换量|价格|均价|恢复率/.test(question)) intent = "price_analysis";
   else if (/异常|波动/.test(question)) intent = "anomaly";
   else if (/贡献最大|贡献度|占比/.test(question)) intent = "contribution";
   else if (/哪个|排名|top|前\d+/i.test(question)) intent = explicitProducts.length > 1 ? "compare" : "rank";
@@ -95,7 +95,7 @@ export function buildFallbackPlan({ question, dashboardFilters = {}, memory = []
     intent,
     resolvedQuestion: question,
     filters,
-    metrics: /毛利/.test(question) ? ["salesAmount", "quantity", "avgSellingPrice"] : ["salesAmount", "quantity", "avgSellingPrice", "discountDepth", "priceIndex"],
+    metrics: /毛利/.test(question) ? ["salesAmount", "quantity", "avgSellingPrice"] : ["salesAmount", "quantity", "avgSellingPrice", "priceIndex"],
     groupBy,
     comparison: { type: comparisonType, startDate: null, endDate: null },
     sort: [{ field: intent === "price_analysis" ? "quantityGrowthRate" : "salesAmount", direction: "desc" }],

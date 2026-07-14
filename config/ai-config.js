@@ -8,7 +8,6 @@ export const AI_CONFIG = Object.freeze({
   maxPlanLimit: 100,
   memoryTurns: 8,
   thresholds: Object.freeze({
-    deepDiscount: 0.3,
     channelDependency: 0.6,
     skuDependency: 0.45,
     anomalyDeviation: 0.35,
@@ -19,10 +18,10 @@ export const AI_CONFIG = Object.freeze({
 
 export const QUERY_WHITELIST = Object.freeze({
   intents: ["summary", "compare", "trend", "diagnose_change", "rank", "anomaly", "contribution", "price_analysis", "generate_report"],
-  metrics: ["salesAmount", "quantity", "avgSellingPrice", "accountingAmount", "accountingPrice", "policyPrice", "promotionPrice", "discountDepth", "priceIndex", "productContribution", "channelContribution", "salesGrowthRate", "quantityGrowthRate", "avgPriceGrowthRate", "recoveryRate"],
+  metrics: ["salesAmount", "quantity", "avgSellingPrice", "accountingAmount", "accountingPrice", "policyPrice", "promotionPrice", "priceIndex", "productContribution", "channelContribution", "salesGrowthRate", "quantityGrowthRate", "avgPriceGrowthRate", "recoveryRate"],
   groupBy: ["date", "product", "series", "model", "channel", "department"],
   comparisonTypes: ["none", "previous_period", "previous_month", "previous_week", "year_over_year"],
-  sortFields: ["salesAmount", "quantity", "avgSellingPrice", "discountDepth", "priceIndex", "productContribution", "channelContribution", "salesGrowthRate", "quantityGrowthRate", "avgPriceGrowthRate", "date", "name"],
+  sortFields: ["salesAmount", "quantity", "avgSellingPrice", "priceIndex", "productContribution", "channelContribution", "salesGrowthRate", "quantityGrowthRate", "avgPriceGrowthRate", "date", "name"],
 });
 
 export const RECOMMENDED_QUESTIONS = Object.freeze([

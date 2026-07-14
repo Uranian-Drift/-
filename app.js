@@ -1,4 +1,3 @@
-import { calculateMetrics } from "./engine/metrics.js";
 import { createChatController } from "./ai/chat-controller.js";
 import { RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
 
@@ -45,26 +44,25 @@ if (window.WATER_HEATER_DATA_READY) {
 
   const TAB_DEFS = [
     ["category", "品类销售"],
-    ["store", "店铺维度"],
-    ["core", "核心型号"],
-    ["outbound", "出库与动销"],
-    ["income", "经营指标"],
-    ["industry", "行业-奥维"],
     ["channel", "渠道效率"],
+    ["store", "店铺效率"],
+    ["core", "型号效率"],
+    ["industry", "行业-奥维"],
+    ["outbound", "出库与动销"],
   ];
 
   const uniqueSorted = (values) => [...new Set(values.filter((value) => value !== "" && value != null))]
     .sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
   const SHAPE_BREAKDOWN_MODES = {
+    newClassification: {
+      label: "新版形态分类",
+      subtitle: "蝶翼和平衡机保持原分类；未分类、通品与效率品合并为其他",
+      column: "新版形态分类",
+    },
     original: {
       label: "原始形态",
       subtitle: "严格使用产品索引表“分类”字段",
       column: "形态分类",
-    },
-    butterflyLiter: {
-      label: "拆分蝶翼 16L/18L",
-      subtitle: "蝶翼按系列拆分：M2=18L，M0/M1=16L；其他形态保持原分类",
-      column: "形态 / 升数",
     },
   };
   const storeValue = (record) => record.store || "未标注店铺";
@@ -79,13 +77,16 @@ if (window.WATER_HEATER_DATA_READY) {
   };
   const shapeStructureValue = (record) => {
     const shape = dimValue(record, "shape");
-    if (state.shapeBreakdownMode !== "butterflyLiter" || shape !== "蝶翼") return shape;
-    const series = String(record.product.series || "").trim().toUpperCase();
-    if (series === "M2") return "蝶翼 18L（M2系列）";
-    if (series === "M0" || series === "M1") return "蝶翼 16L（M0/M1系列）";
-    return "蝶翼 未标注升数";
+    if (state.splitButterfly && shape === "蝶翼") {
+      const series = String(record.product.series || "").trim().toUpperCase();
+      if (series === "M2") return "蝶翼 18L（M2系列）";
+      if (series === "M0" || series === "M1") return "蝶翼 16L（M0/M1系列）";
+      return "蝶翼 未标注升数";
+    }
+    if (state.shapeBreakdownMode === "newClassification" && (shape === "未分类" || shape === "通品" || shape === "效率品")) return "其他";
+    return shape;
   };
-  const LOW_PRIORITY_SHAPES = new Set(["通品", "效率品", "未分类"]);
+  const LOW_PRIORITY_SHAPES = new Set(["通品", "效率品", "未分类", "其他"]);
   const isLowPriorityShape = (name) => LOW_PRIORITY_SHAPES.has(String(name || "").trim());
   const focusShapeItems = (items) => items.filter((item) => !isLowPriorityShape(item.name));
   const sortShapesByPriority = (items) => [...items].sort((a, b) => {
@@ -112,10 +113,15 @@ if (window.WATER_HEATER_DATA_READY) {
     end: maxDate,
     priceLower: 2000,
     priceUpper: 4000,
-    shapeBreakdownMode: "original",
+    shapeBreakdownMode: "newClassification",
+    splitButterfly: false,
+    showNewShapeDetail: false,
     showOperatingFocus: true,
     storeSelected: "",
     storeSort: "desc",
+    modelScope: "core",
+    selectedModel: "",
+    compareModels: [],
     selections: Object.fromEntries(Object.entries(FILTERS).map(([key, spec]) => [key, new Set(spec.options)])),
   };
   const aiState = {
@@ -147,15 +153,16 @@ if (window.WATER_HEATER_DATA_READY) {
     return shifted.toISOString().slice(0, 10);
   };
 
-  function passesDimensionFilters(record) {
-    return SALES_FILTER_KEYS.every((key) => state.selections[key].has(dimValue(record, key)));
+  function passesDimensionFilters(record, ignoredKeys = []) {
+    const ignored = new Set(ignoredKeys);
+    return SALES_FILTER_KEYS.every((key) => ignored.has(key) || state.selections[key].has(dimValue(record, key)));
   }
 
-  function salesForRange(start, end, coreOnly = false) {
+  function salesForRange(start, end, coreOnly = false, ignoredKeys = []) {
     return sales.filter((record) => (
       record.date >= start
       && record.date <= end
-      && passesDimensionFilters(record)
+      && passesDimensionFilters(record, ignoredKeys)
       && (!coreOnly || record.product.core)
     ));
   }
@@ -266,6 +273,41 @@ if (window.WATER_HEATER_DATA_READY) {
       .slice(0, limit);
   }
 
+  const modelKeyOfProduct = (product = {}) => String(product.code || product.name || "").trim();
+  const modelKeyOfRecord = (record) => modelKeyOfProduct(record?.product);
+  const modelLabel = (item) => `${item.product.series || "未分系列"}｜${item.product.name || item.product.code || item.key}`;
+
+  function modelCatalog(currentRows, priorRows, scope = "all") {
+    const scoped = (rows) => scope === "core" ? rows.filter((row) => row.product.core) : rows;
+    const currentMap = groupRows(scoped(currentRows).filter((row) => modelKeyOfRecord(row)), modelKeyOfRecord);
+    const priorMap = groupRows(scoped(priorRows).filter((row) => modelKeyOfRecord(row)), modelKeyOfRecord);
+    const keys = new Set([...currentMap.keys(), ...priorMap.keys()]);
+    return [...keys].map((key) => {
+      const currentModelRows = currentMap.get(key) || [];
+      const priorModelRows = priorMap.get(key) || [];
+      const source = currentModelRows[0] || priorModelRows[0];
+      const current = metricSummary(currentModelRows);
+      const prior = metricSummary(priorModelRows);
+      return {
+        key,
+        product: source?.product || {},
+        currentRows: currentModelRows,
+        priorRows: priorModelRows,
+        current,
+        prior,
+        amountYoy: ratioChange(current.amount, prior.amount),
+        qtyYoy: ratioChange(current.qty, prior.qty),
+      };
+    }).sort((a, b) => b.current.amount - a.current.amount || b.current.qty - a.current.qty || modelLabel(a).localeCompare(modelLabel(b), "zh-CN"));
+  }
+
+  function median(values) {
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!sorted.length) return NaN;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
   function rankList(items, valueFormatter = (item) => formatWan(item.amount), changeFormatter = (item) => formatSignedPct(item.yoy)) {
     if (!items.length) return '<div class="empty-state"><div class="empty-state-inner"><h2>当前筛选无数据</h2><p>调整日期或分类筛选后再查看。</p></div></div>';
     const max = Math.max(...items.map((item) => Math.max(0, Number(item.amount || item.value || 0))), 1);
@@ -295,7 +337,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const currentMap = groupRows(currentRows, (row) => row.date);
     const priorMap = groupRows(priorRows, (row) => row.date);
     return [...currentMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => b.localeCompare(a))
       .map(([day, rows]) => {
         const current = metricSummary(rows);
         const priorDay = shiftYear(day, -1);
@@ -307,7 +349,18 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function table(headers, rows, minWidth = 720) {
-    return `<div class="table-wrap"><table class="data-table" style="min-width:${minWidth}px"><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+    const textHeaders = new Set(["日期", "店铺", "渠道", "业务部", "系列", "形态", "形态分类", "形态 / 升数", "新版形态分类", "型号", "产品编码", "经营分层", "主渠道", "主力渠道", "价位段", "升数段"]);
+    const centerHeaders = new Set(["排名", "优先级", "层级"]);
+    const columnKinds = headers.map((header) => centerHeaders.has(header) ? "center" : textHeaders.has(header) ? "text" : "number");
+    const decoratedRows = rows.map((row) => {
+      let columnIndex = 0;
+      return row.replace(/<td(?:\s+class="([^"]*)")?>/g, (_match, existingClass = "") => {
+        const cellClass = `table-cell-${columnKinds[columnIndex] || "number"} table-column-${columnIndex}`;
+        columnIndex += 1;
+        return `<td class="${existingClass ? `${existingClass} ` : ""}${cellClass}">`;
+      });
+    });
+    return `<div class="table-wrap"><table class="data-table" style="min-width:${minWidth}px"><thead><tr>${headers.map((header, index) => `<th class="table-cell-${columnKinds[index]} table-column-${index}">${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${decoratedRows.join("")}</tbody></table></div>`;
   }
 
   function storeSummaries(rows) {
@@ -436,7 +489,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (!state.showOperatingFocus) {
       return `<section class="focus-panel focus-panel-collapsed glass">
         <div class="focus-copy">
-          <p class="eyebrow">4.1 Operating Focus</p>
+          <p class="eyebrow">4.4 Operating Focus</p>
           <h2>经营重点已隐藏</h2>
           <p>需要时可重新展开，不影响下面各模块数据展示。</p>
         </div>
@@ -464,7 +517,7 @@ if (window.WATER_HEATER_DATA_READY) {
     ];
     return `<section class="focus-panel glass">
       <div class="focus-copy">
-        <p class="eyebrow">4.1 Operating Focus</p>
+        <p class="eyebrow">4.4 Operating Focus</p>
         <h2>经营重点</h2>
         <p>首页优先展示重点形态和核心型号，减少通品、效率品、未分类对判断的干扰。</p>
         <button class="focus-toggle-button" data-toggle-operating-focus type="button">隐藏经营重点</button>
@@ -515,21 +568,76 @@ if (window.WATER_HEATER_DATA_READY) {
     const shapes = sortShapesByPriority(ranking(currentRows, priorRows, shapeStructureValue));
     const totalAmount = metricSummary(currentRows).amount;
     const cardShapes = shapes.filter((item) => item.name !== "未分类" && Number(item.amount || 0) !== 0);
-    const structureCards = cardShapes.map((item) => `<div class="structure-card"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small></div>`).join("");
-    const shapeModeSelector = `<div class="shape-mode-bar" role="group" aria-label="形态结构展示方式">
-      ${Object.entries(SHAPE_BREAKDOWN_MODES).map(([mode, spec]) => `<button type="button" class="shape-mode-button ${state.shapeBreakdownMode === mode ? "active" : ""}" data-shape-breakdown="${escapeHtml(mode)}">${escapeHtml(spec.label)}</button>`).join("")}
+    const structureCards = cardShapes.map((item) => {
+      const drillable = state.shapeBreakdownMode === "newClassification" && item.name === "其他";
+      if (drillable) {
+        return `<button class="structure-card shape-drilldown-card ${state.showNewShapeDetail ? "expanded" : ""}" type="button" data-toggle-new-shape-detail aria-expanded="${state.showNewShapeDetail}"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small><em>${state.showNewShapeDetail ? "收起型号明细" : "查看 X16F1 / P16D3"}</em></button>`;
+      }
+      return `<div class="structure-card"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small></div>`;
+    }).join("");
+    const shapeModeSelector = `<div class="shape-mode-controls">
+      <div class="shape-mode-row"><span>分类口径</span><div class="shape-mode-bar" role="group" aria-label="形态分类口径">
+        ${Object.entries(SHAPE_BREAKDOWN_MODES).map(([mode, spec]) => `<button type="button" class="shape-mode-button ${state.shapeBreakdownMode === mode ? "active" : ""}" data-shape-breakdown="${escapeHtml(mode)}">${escapeHtml(spec.label)}</button>`).join("")}
+      </div></div>
+      <div class="shape-mode-row secondary"><span>蝶翼展示</span><div class="shape-mode-bar" role="group" aria-label="蝶翼升数展示">
+        <button type="button" class="shape-mode-button ${!state.splitButterfly ? "active" : ""}" data-butterfly-split="combined">合并展示</button>
+        <button type="button" class="shape-mode-button ${state.splitButterfly ? "active" : ""}" data-butterfly-split="split">拆分18L/16L</button>
+      </div></div>
     </div>`;
-    const structureRows = shapes.map((item) => {
+    const originalStructureRows = shapes.map((item) => {
       const share = totalAmount !== 0 ? item.amount / totalAmount : NaN;
       const indexDelta = Number.isFinite(item.salesIndex) && Number.isFinite(item.prior.salesIndex) ? item.salesIndex - item.prior.salesIndex : NaN;
       const priority = isLowPriorityShape(item.name) ? "监控" : "重点";
       return `<tr><td>${escapeHtml(item.name)}</td><td><span class="priority-chip ${priority === "重点" ? "primary" : ""}">${priority}</span></td><td>${formatWan(item.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${Number.isFinite(share) ? `${(share * 100).toFixed(1)}%` : "-"}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td></tr>`;
     });
+    const mergedShapeRows = (rows) => rows.filter((row) => {
+      const shape = dimValue(row, "shape");
+      return shape === "未分类" || shape === "通品" || shape === "效率品";
+    });
+    const matchesShapeModel = (row, keyword) => `${row.product.name || ""} ${row.product.code || ""}`.toUpperCase().includes(keyword);
+    const mergedCurrentRows = mergedShapeRows(currentRows);
+    const mergedPriorRows = mergedShapeRows(priorRows);
+    const x16f1CurrentRows = mergedCurrentRows.filter((row) => matchesShapeModel(row, "X16F1"));
+    const x16f1PriorRows = mergedPriorRows.filter((row) => matchesShapeModel(row, "X16F1"));
+    const p16d3CurrentRows = mergedCurrentRows.filter((row) => matchesShapeModel(row, "P16D3"));
+    const p16d3PriorRows = mergedPriorRows.filter((row) => matchesShapeModel(row, "P16D3"));
+    const isWatchedShapeModel = (row) => matchesShapeModel(row, "X16F1") || matchesShapeModel(row, "P16D3");
+    const shapeDetailGroups = [
+      { name: "X16F1", currentRows: x16f1CurrentRows, priorRows: x16f1PriorRows },
+      { name: "P16D3", currentRows: p16d3CurrentRows, priorRows: p16d3PriorRows },
+      { name: "其余产品", currentRows: mergedCurrentRows.filter((row) => !isWatchedShapeModel(row)), priorRows: mergedPriorRows.filter((row) => !isWatchedShapeModel(row)) },
+    ];
+    const mergedCurrent = metricSummary(mergedCurrentRows);
+    const newStructureRows = shapes.flatMap((item) => {
+      const totalShare = totalAmount ? item.amount / totalAmount : NaN;
+      const qtyYoy = ratioChange(item.qty, item.prior.qty);
+      const priority = isLowPriorityShape(item.name) ? "监控" : "重点";
+      const drillable = item.name === "其他";
+      const nameCell = drillable
+        ? `<button type="button" class="shape-table-toggle" data-toggle-new-shape-detail aria-expanded="${state.showNewShapeDetail}"><span>其他</span><em>${state.showNewShapeDetail ? "收起明细" : "展开明细"}</em></button>`
+        : escapeHtml(item.name);
+      const parentRow = `<tr class="shape-parent-row ${drillable ? "shape-other-row" : ""}"><td>${nameCell}</td><td><span class="priority-chip ${priority === "重点" ? "primary" : ""}">${priority}</span></td><td>${formatCurrency(item.amount)}</td><td>${formatCurrency(item.prior.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${formatInteger(item.prior.qty)}</td><td class="${signClass(qtyYoy)}">${formatSignedPct(qtyYoy)}</td><td>${formatRate(totalShare)}</td><td>${drillable ? "100.0%" : "-"}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td></tr>`;
+      if (!drillable || !state.showNewShapeDetail) return [parentRow];
+      const childRows = shapeDetailGroups.map((detail) => {
+        const current = metricSummary(detail.currentRows);
+        const prior = metricSummary(detail.priorRows);
+        const amountYoy = ratioChange(current.amount, prior.amount);
+        const detailQtyYoy = ratioChange(current.qty, prior.qty);
+        const detailTotalShare = totalAmount ? current.amount / totalAmount : NaN;
+        const innerShare = mergedCurrent.amount ? current.amount / mergedCurrent.amount : NaN;
+        return `<tr class="shape-detail-child"><td><span class="shape-child-label">${escapeHtml(detail.name)}</span></td><td><span class="priority-chip">明细</span></td><td>${formatCurrency(current.amount)}</td><td>${formatCurrency(prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(current.qty)}</td><td>${formatInteger(prior.qty)}</td><td class="${signClass(detailQtyYoy)}">${formatSignedPct(detailQtyYoy)}</td><td>${formatRate(detailTotalShare)}</td><td>${formatRate(innerShare)}</td><td>${Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-"}</td><td>${Number.isFinite(current.salesIndex) ? current.salesIndex.toFixed(3) : "-"}</td></tr>`;
+      });
+      return [parentRow, ...childRows];
+    });
+    const structureTable = state.shapeBreakdownMode === "newClassification"
+      ? table([shapeMode.column, "层级", "本期销售额", "同期销售额", "销售同比", "本期销量", "同期销量", "销量同比", "总盘占比", "其他内占比", "均价", "销售指数"], newStructureRows, 1450)
+      : table([shapeMode.column, "优先级", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], originalStructureRows, 720);
+    const shapeModeDescription = `${shapeMode.subtitle}；蝶翼${state.splitButterfly ? "按M2=18L、M0/M1=16L拆分" : "合并展示"}${state.shapeBreakdownMode === "newClassification" ? "；点击其他可在本表中展开重点型号" : ""}`;
 
     return `${renderSalesKpis(currentRows, priorRows)}
       <section class="content-grid">
         ${panel("销售额分日趋势", "按支付日期汇总，与上年同期同日比较", rankList(trend, (item) => formatWan(item.amount)), "daily-sales", { unit: "单位 / 元" })}
-        ${panel("形态结构", `${shapeMode.subtitle}；上方卡片展示主要形态，未分类仅在表格中保留监控`, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${table([shapeMode.column, "优先级", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], structureRows, 720)}`, "shape-structure")}
+        ${panel("形态结构", shapeModeDescription, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${structureTable}`, "shape-structure")}
         ${panel("渠道销售排行", "金额降序，条形长度表示销售贡献", rankList(channels), "channel-ranking")}
         ${panel("业务部销售排行", "组织维度销售金额与同比", rankList(businesses), "business-ranking")}
         ${renderDataHealthPanel()}
@@ -537,42 +645,169 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function renderCore() {
-    const currentRows = salesForRange(state.start, state.end, true);
-    const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1), true);
-    const trend = dailyTrend(currentRows, priorRows, "qty");
-    const series = ranking(currentRows, priorRows, (row) => dimValue(row, "series"));
-    const models = ranking(currentRows, priorRows, (row) => row.product.name || row.product.code);
-    const modelVolumes = [...models].sort((a, b) => b.qty - a.qty);
-    const channels = ranking(currentRows, priorRows, (row) => dimValue(row, "channel"));
-    const seriesOrder = new Map(series.map((item, index) => [item.name, index]));
-    const productFilterKeys = ["shape", "series", "core", "position"];
-    const uniqueCoreProducts = new Map();
-    products.forEach((product, productId) => {
-      if (!product.core) return;
-      const key = product.code || product.name;
-      if (key && !uniqueCoreProducts.has(key)) uniqueCoreProducts.set(key, { product, productId });
-    });
-    const seriesModelItems = [...uniqueCoreProducts.values()]
-      .filter(({ product }) => product.core && productFilterKeys.every((key) => state.selections[key].has(dimValue({ product }, key))))
-      .map(({ product, productId }) => ({
-        seriesName: product.series || "未分系列",
-        modelName: product.name || product.code,
-        code: product.code || "",
-        ...metricSummary(currentRows.filter((row) => row.productId === productId)),
-      }))
-      .sort((a, b) => (seriesOrder.get(a.seriesName) ?? 999) - (seriesOrder.get(b.seriesName) ?? 999) || b.qty - a.qty);
-    const totalCoreQty = metricSummary(currentRows).qty;
-    const seriesModelRows = seriesModelItems.map((item) => `<tr data-search-row="${escapeHtml(`${item.seriesName} ${item.modelName} ${item.code}`.toLowerCase())}"><td>${escapeHtml(item.seriesName)}</td><td>${escapeHtml(item.modelName)}</td><td>${escapeHtml(item.code || "-")}</td><td>${formatInteger(item.qty)}</td><td>${formatWan(item.amount)}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${totalCoreQty ? `${(item.qty / totalCoreQty * 100).toFixed(1)}%` : "-"}</td></tr>`);
-    const modelRows = seriesModelItems.map((item) => `<tr data-search-row="${escapeHtml(`${item.seriesName} ${item.modelName} ${item.code}`.toLowerCase())}"><td>${escapeHtml(item.seriesName)}</td><td>${escapeHtml(item.modelName)}</td><td>${escapeHtml(item.code || "-")}</td><td>${formatInteger(item.qty)}</td><td>${formatWan(item.amount)}</td><td>${Number.isFinite(item.accounting) && item.qty !== 0 ? formatCurrency(item.accounting / item.qty) : "-"}</td><td>${Number.isFinite(item.policy) && item.policyQty !== 0 ? formatCurrency(item.policy / item.policyQty) : "-"}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td></tr>`);
+    const currentBaseRows = salesForRange(state.start, state.end, false, ["core"]);
+    const priorBaseRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1), false, ["core"]);
+    const catalog = modelCatalog(currentBaseRows, priorBaseRows, state.modelScope);
+    const catalogMap = new Map(catalog.map((item) => [item.key, item]));
+    if (!catalogMap.has(state.selectedModel)) state.selectedModel = catalog[0]?.key || "";
+    state.compareModels = state.compareModels.filter((key) => key !== state.selectedModel && catalogMap.has(key)).slice(0, 2);
 
-    return `${renderSalesKpis(currentRows, priorRows)}
-      <section class="content-grid three-column">
-        ${panel("核心型号分日趋势", `核心品标记来自索引表，去重后共 ${formatInteger(DATA.diagnostics.coreUniqueProducts || DATA.diagnostics.coreProducts)} 个型号`, rankList(trend, (item) => `${formatInteger(item.amount)}台`), "core-trend", { unit: "单位 / 台" })}
-        ${panel("系列排行", "未维护系列的产品归入“未分系列”", rankList(series), "core-series")}
-        ${panel("渠道贡献", "核心型号在各渠道的销售贡献", rankList(channels), "core-channel")}
-        ${panel("型号销量排行", "按所选周期销量降序，补充核心型号销量维度", rankList(modelVolumes.slice(0, 15).map((item) => ({ ...item, amount: item.qty })), (item) => `${formatInteger(item.qty)}台`), "core-models")}
-        ${panel("系列 × 型号销量", "展示所选周期内每个系列、每个核心型号的销量", table(["系列", "型号", "产品编码", "销量", "销售额", "成交均价", "销量占比"], seriesModelRows, 940), "series-model-volume", { className: "span-3" })}
-        ${panel("核算价查询", "支持按系列、产品名称或编码搜索当前核心型号", `<div class="search-row"><input id="accountingSearch" type="search" placeholder="搜索系列、产品名称或编码" /></div>${table(["系列", "型号", "产品编码", "台量", "金额", "核算单价", "政策均价", "成交均价", "销售指数"], modelRows, 1060)}`, "accounting-query", { className: "span-3" })}
+    const scopeButtons = `<div class="model-scope-switch" role="group" aria-label="型号范围">
+      <button type="button" class="${state.modelScope === "core" ? "active" : ""}" data-model-scope="core">核心品</button>
+      <button type="button" class="${state.modelScope === "all" ? "active" : ""}" data-model-scope="all">全部型号</button>
+    </div>`;
+    if (!catalog.length) {
+      return `<section class="model-control-panel glass"><div><p class="eyebrow">Model Intelligence</p><h2>型号分析</h2><p>当前范围没有可分析型号。</p></div>${scopeButtons}</section>
+        <section class="empty-state"><div class="empty-state-inner"><h2>当前筛选无型号数据</h2><p>请调整日期、渠道、业务部、形态、系列或产品定位。</p></div></section>`;
+    }
+
+    const selected = catalogMap.get(state.selectedModel);
+    const current = selected.current;
+    const prior = selected.prior;
+    const allCurrent = metricSummary(currentBaseRows);
+    const allPrior = metricSummary(priorBaseRows);
+    const amountChange = ratioChange(current.amount, prior.amount);
+    const qtyChange = ratioChange(current.qty, prior.qty);
+    const avgPriceChange = ratioChange(current.avgPrice, prior.avgPrice);
+    const modelShare = allCurrent.amount ? current.amount / allCurrent.amount : NaN;
+    const priorModelShare = allPrior.amount ? prior.amount / allPrior.amount : NaN;
+    const shareChange = Number.isFinite(modelShare) && Number.isFinite(priorModelShare) ? modelShare - priorModelShare : NaN;
+    const indexDelta = Number.isFinite(current.salesIndex) && Number.isFinite(prior.salesIndex) ? current.salesIndex - prior.salesIndex : NaN;
+    const policyPrice = current.policyQty ? current.policy / current.policyQty : NaN;
+    const activeStores = new Set(selected.currentRows.map(storeValue).filter((name) => name !== "未标注店铺")).size;
+
+    const modelOptions = catalog.map((item) => `<option value="${escapeHtml(item.key)}" ${item.key === selected.key ? "selected" : ""}>${escapeHtml(`${modelLabel(item)}（${formatInteger(item.current.qty)}台）`)}</option>`).join("");
+    const compareCandidates = catalog.filter((item) => item.key !== selected.key && !state.compareModels.includes(item.key));
+    const compareOptions = compareCandidates.map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(modelLabel(item))}</option>`).join("");
+    const compareChips = state.compareModels.map((key) => {
+      const item = catalogMap.get(key);
+      return `<span class="compare-chip">${escapeHtml(item ? modelLabel(item) : key)}<button type="button" data-remove-model-compare="${escapeHtml(key)}">移除</button></span>`;
+    }).join("");
+    const controlPanel = `<section class="model-control-panel glass">
+      <div class="model-control-copy"><p class="eyebrow">Model Intelligence</p><h2>型号分析</h2><p>核心品为默认范围；切换到全部型号后可分析任一有销售记录的型号。</p></div>
+      <div class="model-control-grid">
+        <div><span class="filter-label">型号范围</span>${scopeButtons}</div>
+        <label class="range-field"><span>搜索型号</span><input id="modelSearch" type="search" placeholder="输入型号、编码或系列" /></label>
+        <label class="range-field"><span>选择型号</span><select id="modelSelect">${modelOptions}</select></label>
+      </div>
+      <div class="model-compare-bar">
+        <div><strong>型号对比</strong><span>当前型号已自动加入，可再添加 ${Math.max(0, 2 - state.compareModels.length)} 个</span></div>
+        <select id="compareModelSelect" ${!compareCandidates.length || state.compareModels.length >= 2 ? "disabled" : ""}><option value="">选择对比型号</option>${compareOptions}</select>
+        <button type="button" class="ghost-action" data-add-model-compare ${!compareCandidates.length || state.compareModels.length >= 2 ? "disabled" : ""}>加入对比</button>
+        <div class="compare-chips">${compareChips || '<span class="neutral">尚未添加对比型号</span>'}</div>
+      </div>
+      <p class="model-identity"><strong>${escapeHtml(selected.product.name || selected.key)}</strong><span>${escapeHtml(selected.product.code || "无编码")}</span><span>${escapeHtml(selected.product.series || "未分系列")}</span><span>${escapeHtml(selected.product.shape || "未分类")}</span><span>${selected.product.core ? "核心品" : "非核心品"}</span></p>
+    </section>`;
+
+    const currentDailyMap = groupRows(selected.currentRows, (row) => row.date);
+    const priorDailyMap = groupRows(selected.priorRows, (row) => row.date);
+    const dailyRows = [...currentDailyMap.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 10).map(([date, rows]) => {
+      const day = metricSummary(rows);
+      const priorDay = metricSummary(priorDailyMap.get(shiftYear(date, -1)) || []);
+      return `<tr><td>${escapeHtml(date)}</td><td>${formatWan(day.amount)}</td><td>${formatInteger(day.qty)}</td><td>${Number.isFinite(day.avgPrice) ? formatCurrency(day.avgPrice) : "-"}</td><td class="${signClass(ratioChange(day.amount, priorDay.amount))}">${formatSignedPct(ratioChange(day.amount, priorDay.amount))}</td><td class="${signClass(ratioChange(day.qty, priorDay.qty))}">${formatSignedPct(ratioChange(day.qty, priorDay.qty))}</td></tr>`;
+    });
+
+    const selectedChannelMap = groupRows(selected.currentRows, (row) => dimValue(row, "channel"));
+    const priorChannelMap = groupRows(selected.priorRows, (row) => dimValue(row, "channel"));
+    const totalChannelMap = groupRows(currentBaseRows, (row) => dimValue(row, "channel"));
+    const channelNames = new Set([...totalChannelMap.keys(), ...selectedChannelMap.keys(), ...priorChannelMap.keys()]);
+    const channelItems = [...channelNames].map((name) => {
+      const rows = selectedChannelMap.get(name) || [];
+      const currentChannel = metricSummary(rows);
+      const priorChannel = metricSummary(priorChannelMap.get(name) || []);
+      const channelTotal = metricSummary(totalChannelMap.get(name) || []);
+      const modelChannelContribution = current.amount ? currentChannel.amount / current.amount : NaN;
+      const channelPenetration = channelTotal.amount ? currentChannel.amount / channelTotal.amount : NaN;
+      const fitIndex = Number.isFinite(channelPenetration) && Number.isFinite(modelShare) && modelShare !== 0 ? channelPenetration / modelShare : NaN;
+      const stores = new Set(rows.map(storeValue).filter((value) => value !== "未标注店铺")).size;
+      return {
+        name,
+        current: currentChannel,
+        prior: priorChannel,
+        channelTotal,
+        modelChannelContribution,
+        channelPenetration,
+        fitIndex,
+        stores,
+        storeAvgQty: stores ? currentChannel.qty / stores : NaN,
+        amountYoy: ratioChange(currentChannel.amount, priorChannel.amount),
+        qtyYoy: ratioChange(currentChannel.qty, priorChannel.qty),
+        opportunityScore: Number.isFinite(fitIndex) ? channelTotal.amount * Math.max(0, 1 - fitIndex) : 0,
+      };
+    }).sort((a, b) => b.current.amount - a.current.amount || b.channelTotal.amount - a.channelTotal.amount);
+    const topChannel = channelItems.find((item) => item.current.amount > 0);
+    const fitChannel = [...channelItems].filter((item) => item.current.amount > 0 && Number.isFinite(item.fitIndex)).sort((a, b) => b.fitIndex - a.fitIndex)[0];
+    const opportunityChannel = [...channelItems].filter((item) => item.channelTotal.amount > 0 && Number.isFinite(item.fitIndex) && item.fitIndex < 1).sort((a, b) => b.opportunityScore - a.opportunityScore)[0];
+    const channelRows = channelItems.map((item) => `<tr>
+      <td>${escapeHtml(item.name)}</td><td>${formatWan(item.current.amount)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td>
+      <td class="${signClass(item.amountYoy)}">${formatSignedPct(item.amountYoy)}</td><td class="${signClass(item.qtyYoy)}">${formatSignedPct(item.qtyYoy)}</td>
+      <td>${formatRate(item.modelChannelContribution)}</td><td>${formatRate(item.channelPenetration)}</td><td>${Number.isFinite(item.fitIndex) ? item.fitIndex.toFixed(2) : "-"}</td>
+      <td>${formatInteger(item.stores)}</td><td>${Number.isFinite(item.storeAvgQty) ? formatDecimal(item.storeAvgQty, 1) : "-"}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td>
+    </tr>`);
+
+    const currentStoreMap = groupRows(selected.currentRows, storeValue);
+    const priorStoreMap = groupRows(selected.priorRows, storeValue);
+    const storeItems = [...currentStoreMap.entries()].map(([name, rows]) => {
+      const currentStore = metricSummary(rows);
+      const priorStore = metricSummary(priorStoreMap.get(name) || []);
+      const channel = [...groupRows(rows, (row) => dimValue(row, "channel")).entries()]
+        .map(([channelName, channelRows]) => ({ name: channelName, amount: metricSummary(channelRows).amount }))
+        .sort((a, b) => b.amount - a.amount)[0]?.name || "未标注";
+      return { name, channel, current: currentStore, prior: priorStore, contribution: current.amount ? currentStore.amount / current.amount : NaN, yoy: ratioChange(currentStore.amount, priorStore.amount) };
+    }).sort((a, b) => b.current.amount - a.current.amount);
+    const topStoreShare = storeItems[0]?.contribution;
+    const storeRows = storeItems.slice(0, 50).map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.channel)}</td><td>${formatWan(item.current.amount)}</td><td>${formatInteger(item.current.qty)}</td><td>${formatRate(item.contribution)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td></tr>`);
+
+    const compareKeys = [selected.key, ...state.compareModels].slice(0, 3);
+    const compareRows = compareKeys.map((key) => {
+      const item = catalogMap.get(key);
+      const itemShare = allCurrent.amount ? item.current.amount / allCurrent.amount : NaN;
+      const itemPolicyPrice = item.current.policyQty ? item.current.policy / item.current.policyQty : NaN;
+      const itemStores = new Set(item.currentRows.map(storeValue).filter((value) => value !== "未标注店铺")).size;
+      const itemTopChannel = ranking(item.currentRows, item.priorRows, (row) => dimValue(row, "channel"), 1)[0];
+      return `<tr class="${key === selected.key ? "highlight-row" : ""}"><td>${escapeHtml(item.product.name || key)}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${formatWan(item.current.amount)}</td><td>${formatInteger(item.current.qty)}</td><td>${formatRate(itemShare)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(itemPolicyPrice) ? formatCurrency(itemPolicyPrice) : "-"}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td>${formatInteger(itemStores)}</td><td>${escapeHtml(itemTopChannel?.name || "-")}</td><td class="${signClass(item.amountYoy)}">${formatSignedPct(item.amountYoy)}</td><td class="${signClass(item.qtyYoy)}">${formatSignedPct(item.qtyYoy)}</td></tr>`;
+    });
+
+    const modelContributions = catalog.map((item) => allCurrent.amount ? item.current.amount / allCurrent.amount : NaN);
+    const contributionMedian = median(modelContributions.filter((value) => value > 0));
+    const lifecycleLabel = (contribution, yoy) => {
+      if (!Number.isFinite(yoy)) return "待观察";
+      const highContribution = Number.isFinite(contributionMedian) && contribution >= contributionMedian;
+      if (highContribution && yoy >= 0) return "增长核心";
+      if (highContribution) return "核心承压";
+      if (yoy >= 0) return "机会型号";
+      return "长尾型号";
+    };
+    const allModelRows = catalog.map((item) => {
+      const contribution = allCurrent.amount ? item.current.amount / allCurrent.amount : NaN;
+      const itemPolicyPrice = item.current.policyQty ? item.current.policy / item.current.policyQty : NaN;
+      const itemStores = new Set(item.currentRows.map(storeValue).filter((value) => value !== "未标注店铺")).size;
+      const itemTopChannel = ranking(item.currentRows, item.priorRows, (row) => dimValue(row, "channel"), 1)[0];
+      const layer = lifecycleLabel(contribution, item.amountYoy);
+      return `<tr data-model-row="${escapeHtml(`${item.product.series || ""} ${item.product.shape || ""} ${item.product.name || ""} ${item.product.code || item.key}`.toLowerCase())}"><td>${escapeHtml(layer)}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${escapeHtml(item.product.name || item.key)}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${formatWan(item.current.amount)}</td><td>${formatInteger(item.current.qty)}</td><td>${formatRate(contribution)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(itemPolicyPrice) ? formatCurrency(itemPolicyPrice) : "-"}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td>${formatInteger(itemStores)}</td><td>${escapeHtml(itemTopChannel?.name || "-")}</td><td class="${signClass(item.amountYoy)}">${formatSignedPct(item.amountYoy)}</td><td class="${signClass(item.qtyYoy)}">${formatSignedPct(item.qtyYoy)}</td></tr>`;
+    });
+
+    return `${controlPanel}
+      <section class="metric-grid">
+        ${metricCard("型号销售额", formatCurrency(current.amount), `同比 ${formatSignedPct(amountChange)}`, amountChange, "所选型号销售金额")}
+        ${metricCard("型号销量", formatInteger(current.qty), `同比 ${formatSignedPct(qtyChange)}`, qtyChange, "所选型号销售数量")}
+        ${metricCard("型号销售占比", formatRate(modelShare), `同比净值差 ${formatSignedPoint(shareChange)}`, shareChange, "型号销售额 ÷ 当前筛选全部型号销售额")}
+        ${metricCard("型号成交均价", Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-", `同比 ${formatSignedPct(avgPriceChange)}`, avgPriceChange, "型号销售额 ÷ 型号销量")}
+        ${metricCard("型号销售指数", Number.isFinite(current.salesIndex) ? current.salesIndex.toFixed(3) : "-", `同比净值差 ${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}`, indexDelta, "型号销售金额 ÷ 核算价金额")}
+        ${metricCard("动销店铺数", formatInteger(activeStores), `政策均价 ${Number.isFinite(policyPrice) ? formatCurrency(policyPrice) : "-"}`, activeStores, "筛选期内有该型号销售记录的去重店铺数")}
+      </section>
+      <section class="model-insight-grid">
+        <div class="structure-card"><span>主力渠道</span><strong>${escapeHtml(topChannel?.name || "-")}</strong><small>${topChannel ? `${formatWan(topChannel.current.amount)} · 型号贡献 ${formatRate(topChannel.modelChannelContribution)}` : "当前无渠道销售"}</small></div>
+        <div class="structure-card"><span>最适配渠道</span><strong>${escapeHtml(fitChannel?.name || "-")}</strong><small>${fitChannel ? `适配指数 ${formatDecimal(fitChannel.fitIndex, 2)}` : "当前无适配数据"}</small></div>
+        <div class="structure-card"><span>优先机会渠道</span><strong>${escapeHtml(opportunityChannel?.name || "-")}</strong><small>${opportunityChannel ? `渠道规模 ${formatWan(opportunityChannel.channelTotal.amount)} · 当前占比 ${formatRate(opportunityChannel.channelPenetration)}` : "暂无明显渠道缺口"}</small></div>
+        <div class="structure-card"><span>头部店铺集中度</span><strong>${formatRate(topStoreShare)}</strong><small>${storeItems[0] ? escapeHtml(storeItems[0].name) : "当前无店铺销售"}</small></div>
+      </section>
+      <section class="content-grid">
+        ${panel("渠道销售效率", "适配指数=渠道内型号占比÷型号整体占比；大于1表示该渠道表现高于型号整体水平", table(["渠道", "销售额", "销量", "成交均价", "销售同比", "销量同比", "型号渠道贡献", "渠道内型号占比", "渠道适配指数", "动销店铺", "店均销量", "销售指数"], channelRows, 1480), "model-channel-efficiency", { className: "span-2" })}
+        ${panel("店铺销售效率", `动销店铺 ${formatInteger(activeStores)} 家；店均销量 ${activeStores ? formatDecimal(current.qty / activeStores, 1) : "-"} 台`, table(["店铺", "主渠道", "销售额", "销量", "型号贡献", "成交均价", "销售同比", "销售指数"], storeRows, 980), "model-store-efficiency", { className: "span-2" })}
+        ${panel("型号对比", state.compareModels.length ? `当前共对比 ${formatInteger(compareKeys.length)} 个型号` : "可在上方再添加1—2个型号", table(["型号", "系列", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "动销店铺", "主力渠道", "销售同比", "销量同比"], compareRows, 1380), "model-comparison")}
+        ${panel("型号近10天表现", "展示筛选周期内最近10个有销售记录的日期，按日期由近到远排列", table(["日期", "销售额", "销量", "成交均价", "销售同比", "销量同比"], dailyRows, 720), "model-daily")}
+        ${panel(state.modelScope === "core" ? "核心型号经营明细" : "全部型号经营明细", "经营分层以当前型号销售贡献中位数和销售同比方向划分，仅用于快速定位", `<div class="search-row"><input id="allModelSearch" type="search" placeholder="搜索系列、形态、型号或编码" /></div>${table(["经营分层", "系列", "型号", "产品编码", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "动销店铺", "主力渠道", "销售同比", "销量同比"], allModelRows, 1640)}`, "all-model-detail", { className: "span-2" })}
       </section>`;
   }
 
@@ -598,7 +833,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const matchRate = matchTotal ? matchRows / matchTotal : NaN;
     const currentByDate = groupRows(currentRows, (row) => row.date);
     const priorByDate = groupRows(priorRows, (row) => row.date);
-    const trend = [...currentByDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, rows]) => {
+    const trend = [...currentByDate.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([day, rows]) => {
       const qty = outboundSummary(rows).qty;
       const priorQty = outboundSummary(priorByDate.get(shiftYear(day, -1)) || []).qty;
       return { name: day, amount: qty, yoy: ratioChange(qty, priorQty) };
@@ -633,47 +868,6 @@ if (window.WATER_HEATER_DATA_READY) {
       : "当前文件夹未提供收入、成本、费用或毛利字段，因此本模块保持空态。";
     const fields = outbound ? DATA.meta.unavailable.outbound : DATA.meta.unavailable.income;
     return `<section class="empty-state"><div class="empty-state-inner"><p class="eyebrow">No Fabricated Metrics</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><div class="required-fields">${fields.map((field) => `<span>${escapeHtml(field)}</span>`).join("")}</div></div></section>`;
-  }
-
-  function renderRuntimeMetrics() {
-    const currentRows = salesForRange(state.start, state.end);
-    const metrics = calculateMetrics(currentRows);
-    const { summary, products: metricProducts, channels } = metrics;
-    const topChannel = channels[0];
-    const topProduct = metricProducts[0];
-    const productRows = metricProducts.slice(0, 30).map((item) => `<tr>
-      <td>${escapeHtml(item.name)}</td>
-      <td>${formatWan(item.sales)}</td>
-      <td>${formatInteger(item.quantity)}</td>
-      <td>${formatRate(item.share)}</td>
-      <td>${Number.isFinite(item.averagePrice) ? formatCurrency(item.averagePrice) : "-"}</td>
-      <td>${Number.isFinite(item.policyPrice) ? formatCurrency(item.policyPrice) : "-"}</td>
-      <td>${formatRate(item.discountDepth)}</td>
-      <td>${Number.isFinite(item.priceIndex) ? item.priceIndex.toFixed(3) : "-"}</td>
-    </tr>`);
-    const channelRows = channels.map((item) => `<tr>
-      <td>${escapeHtml(item.name)}</td>
-      <td>${formatWan(item.sales)}</td>
-      <td>${formatInteger(item.quantity)}</td>
-      <td>${formatRate(item.share)}</td>
-      <td>${Number.isFinite(item.averagePrice) ? formatCurrency(item.averagePrice) : "-"}</td>
-      <td>${formatRate(item.discountDepth)}</td>
-      <td>${Number.isFinite(item.priceIndex) ? item.priceIndex.toFixed(3) : "-"}</td>
-    </tr>`);
-
-    return `<p class="availability-note">当前数据没有成本字段，因此不展示或推算毛利。以下价格、折扣与贡献指标均由当前筛选记录实时计算。</p>
-      <section class="metric-grid">
-        ${metricCard("销售金额", formatCurrency(summary.salesAmount), `${formatInteger(summary.quantity)} 台`, summary.salesAmount, "销售金额合计")}
-        ${metricCard("成交均价", formatCurrency(summary.avgSellingPrice), "销售金额 ÷ 销量", summary.avgSellingPrice, "运行时计算")}
-        ${metricCard("折扣深度", formatRate(summary.discountDepth), `政策价覆盖 ${formatRate(summary.policyCoverage)}`, -summary.discountDepth, "1－销售金额÷政策价金额")}
-        ${metricCard("价格指数", Number.isFinite(summary.priceIndex) ? summary.priceIndex.toFixed(3) : "-", "销售金额 ÷ 核算价金额", summary.priceIndex - 1, "沿用销售指数口径")}
-        ${metricCard("头部渠道占比", topChannel ? formatRate(topChannel.share) : "-", topChannel?.name || "当前筛选无渠道", topChannel?.share, "渠道销售金额 ÷ 总销售金额")}
-        ${metricCard("头部SKU贡献", topProduct ? formatRate(topProduct.share) : "-", topProduct?.name || "当前筛选无SKU", topProduct?.share, "SKU销售金额 ÷ 总销售金额")}
-      </section>
-      <section class="content-grid">
-        ${panel("产品贡献与价格质量", "所有指标均由当前筛选记录在浏览器运行时计算", table(["型号", "销售额", "销量", "贡献度", "成交均价", "政策价", "折扣深度", "价格指数"], productRows, 1080), "runtime-product-metrics", { className: "span-2" })}
-        ${panel("渠道结构与经营质量", "渠道占比、成交均价与折扣深度同口径对比", table(["渠道", "销售额", "销量", "渠道占比", "成交均价", "折扣深度", "价格指数"], channelRows, 900), "runtime-channel-metrics", { className: "span-2" })}
-      </section>`;
   }
 
   function monthShift(month, delta) {
@@ -822,7 +1016,8 @@ if (window.WATER_HEATER_DATA_READY) {
     const channelRow = (item, className = "") => {
       const indexDelta = Number.isFinite(item.salesIndex) && Number.isFinite(item.prior.salesIndex) ? item.salesIndex - item.prior.salesIndex : NaN;
       const avgPriceYoy = ratioChange(item.avgPrice, item.prior.avgPrice);
-      return `<tr${className ? ` class="${escapeHtml(className)}"` : ""}><td>${escapeHtml(item.name)}</td><td>${formatWan(item.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td></tr>`;
+      const channelShare = currentTotal.amount ? item.amount / currentTotal.amount : NaN;
+      return `<tr${className ? ` class="${escapeHtml(className)}"` : ""}><td>${escapeHtml(item.name)}</td><td>${formatWan(item.amount)}</td><td>${formatRate(channelShare)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td></tr>`;
     };
     const currentTotal = metricSummary(currentRows);
     const priorTotal = metricSummary(priorRows);
@@ -838,7 +1033,7 @@ if (window.WATER_HEATER_DATA_READY) {
     ];
     return `<p class="availability-note">当前数据没有成本字段，因此不推算毛利率；同期口径为上年同日期区间。</p>
       <section class="content-grid">
-        ${panel("渠道经营效率", "销售与价格指标均来自有效销售数据", table(["渠道", "销售额", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], rows, 1080), "channel-efficiency", { className: "span-2" })}
+        ${panel("渠道经营效率", "渠道贡献、同期销售与价格指标均来自有效销售数据", table(["渠道", "销售额", "渠道占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], rows, 1160), "channel-efficiency", { className: "span-2" })}
       </section>`;
   }
 
@@ -848,7 +1043,6 @@ if (window.WATER_HEATER_DATA_READY) {
     if (state.tab === "store") content.innerHTML = renderStore();
     if (state.tab === "core") content.innerHTML = renderCore();
     if (state.tab === "outbound") content.innerHTML = renderOutbound();
-    if (state.tab === "income") content.innerHTML = renderRuntimeMetrics();
     if (state.tab === "industry") content.innerHTML = renderIndustry();
     if (state.tab === "channel") content.innerHTML = renderChannel();
     attachDynamicEvents();
@@ -954,7 +1148,9 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function updateFilterContext() {
     const industryMode = state.tab === "industry";
+    const modelMode = state.tab === "core";
     document.getElementById("positionFilter").hidden = industryMode;
+    document.getElementById("coreFilter").hidden = modelMode;
   }
 
   function renderTabs() {
@@ -1092,6 +1288,44 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function attachDynamicEvents() {
     document.querySelectorAll("[data-download-panel]").forEach((button) => button.addEventListener("click", () => downloadPanel(button.dataset.downloadPanel)));
+    document.querySelectorAll("[data-model-scope]").forEach((button) => button.addEventListener("click", () => {
+      const scope = button.dataset.modelScope === "all" ? "all" : "core";
+      if (scope === state.modelScope) return;
+      state.modelScope = scope;
+      state.selectedModel = "";
+      state.compareModels = [];
+      renderDashboard();
+    }));
+    const modelSearch = document.getElementById("modelSearch");
+    const modelSelect = document.getElementById("modelSelect");
+    if (modelSearch && modelSelect) modelSearch.addEventListener("input", () => {
+      const query = modelSearch.value.trim().toLowerCase();
+      [...modelSelect.options].forEach((option) => {
+        option.hidden = Boolean(query) && !option.textContent.toLowerCase().includes(query);
+      });
+    });
+    if (modelSelect) modelSelect.addEventListener("change", () => {
+      state.selectedModel = modelSelect.value;
+      state.compareModels = state.compareModels.filter((key) => key !== state.selectedModel);
+      renderDashboard();
+    });
+    const addModelCompare = document.querySelector("[data-add-model-compare]");
+    if (addModelCompare) addModelCompare.addEventListener("click", () => {
+      const compareSelect = document.getElementById("compareModelSelect");
+      const key = compareSelect?.value || "";
+      if (!key || key === state.selectedModel || state.compareModels.includes(key) || state.compareModels.length >= 2) return;
+      state.compareModels.push(key);
+      renderDashboard();
+    });
+    document.querySelectorAll("[data-remove-model-compare]").forEach((button) => button.addEventListener("click", () => {
+      state.compareModels = state.compareModels.filter((key) => key !== button.dataset.removeModelCompare);
+      renderDashboard();
+    }));
+    const allModelSearch = document.getElementById("allModelSearch");
+    if (allModelSearch) allModelSearch.addEventListener("input", () => {
+      const query = allModelSearch.value.trim().toLowerCase();
+      document.querySelectorAll("[data-model-row]").forEach((row) => { row.hidden = !row.dataset.modelRow.includes(query); });
+    });
     document.querySelectorAll("[data-toggle-operating-focus]").forEach((button) => button.addEventListener("click", () => {
       state.showOperatingFocus = !state.showOperatingFocus;
       renderDashboard();
@@ -1100,6 +1334,16 @@ if (window.WATER_HEATER_DATA_READY) {
       const mode = button.dataset.shapeBreakdown;
       if (!SHAPE_BREAKDOWN_MODES[mode] || state.shapeBreakdownMode === mode) return;
       state.shapeBreakdownMode = mode;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-butterfly-split]").forEach((button) => button.addEventListener("click", () => {
+      const splitButterfly = button.dataset.butterflySplit === "split";
+      if (state.splitButterfly === splitButterfly) return;
+      state.splitButterfly = splitButterfly;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-toggle-new-shape-detail]").forEach((button) => button.addEventListener("click", () => {
+      state.showNewShapeDetail = !state.showNewShapeDetail;
       renderDashboard();
     }));
     const search = document.getElementById("accountingSearch");
@@ -1230,7 +1474,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ["价位段口径", "奥维单价字段与销额÷销量一致；固定结构分为2000以下、2000–2500、2500–3000、3000–3500、3500–4000、4000以上，自定义区间上下限均包含。"],
       ["同比口径", "销售与出库按上年同期同日；奥维按上年同期月份。分母为0或无同期时显示“-”。"],
       ["销售指数", "销售金额 ÷ 核算价金额合计。原始核算价字段已包含数量影响。"],
-      ["运行时经营指标", "折扣深度、价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
+      ["运行时派生指标", "价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
       ["AI分析上下文", "DeepSeek负责查询规划与结果解释；本地引擎执行白名单筛选、聚合、对比和异常计算，仅发送压缩结果，不发送完整原始明细。"],
       ["AI密钥安全", "前端不保存API Key；部署后由Netlify环境变量DEEPSEEK_API_KEY注入Function代理。"],
       ["缺失处理", "库存、收入、成本、费用、目标、销售侧升数与区域等未提供字段不推算。"],
