@@ -360,10 +360,13 @@ if (window.WATER_HEATER_DATA_READY) {
     const columnKinds = headers.map((header) => centerHeaders.has(header) ? "center" : textHeaders.has(header) ? "text" : "number");
     const decoratedRows = rows.map((row) => {
       let columnIndex = 0;
-      return row.replace(/<td(?:\s+class="([^"]*)")?>/g, (_match, existingClass = "") => {
+      return row.replace(/<td([^>]*)>/g, (_match, attributes = "") => {
+        const classMatch = attributes.match(/\sclass="([^"]*)"/);
+        const existingClass = classMatch?.[1] || "";
+        const preservedAttributes = attributes.replace(/\sclass="[^"]*"/, "");
         const cellClass = `table-cell-${columnKinds[columnIndex] || "number"} table-column-${columnIndex}`;
         columnIndex += 1;
-        return `<td class="${existingClass ? `${existingClass} ` : ""}${cellClass}">`;
+        return `<td${preservedAttributes} class="${existingClass ? `${existingClass} ` : ""}${cellClass}">`;
       });
     });
     return `<div class="table-wrap"><table class="data-table" style="min-width:${minWidth}px"><thead><tr>${headers.map((header, index) => `<th class="table-cell-${columnKinds[index]} table-column-${index}">${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${decoratedRows.join("")}</tbody></table></div>`;
@@ -645,9 +648,10 @@ if (window.WATER_HEATER_DATA_READY) {
         ? item.current.salesIndex - item.prior.salesIndex : NaN;
       const share = totalAmount ? item.current.amount / totalAmount : NaN;
       const searchText = `${item.product.series || ""} ${item.product.shape || ""} ${item.product.name || ""} ${item.product.code || item.key}`.toLowerCase();
-      return `<tr data-category-model-row="${escapeHtml(searchText)}"><td>${index + 1}</td><td>${escapeHtml(item.product.name || item.product.code || item.key)}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${escapeHtml(item.product.shape || "未分类")}</td><td>${item.product.core ? "核心品" : "非核心品"}</td><td>${formatWan(item.current.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td><td>${formatRate(share)}</td></tr>`;
+      const modelName = item.product.name || item.product.code || item.key;
+      return `<tr data-category-model-row="${escapeHtml(searchText)}"><td>${index + 1}</td><td><button type="button" class="model-detail-link" data-open-model-detail="${escapeHtml(item.key)}" title="进入${escapeHtml(modelName)}型号分析">${escapeHtml(modelName)}</button></td><td>${formatWan(item.current.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td><td>${formatRate(share)}</td><td>${escapeHtml(item.product.shape || "未分类")}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${item.product.core ? "核心品" : "非核心品"}</td></tr>`;
     });
-    const modelDetail = `<div class="search-row"><input id="categoryModelSearch" type="search" placeholder="搜索型号、编码、系列或形态" /></div>${table(["排名", "型号", "产品编码", "系列", "形态分类", "核心品", "销售额", "同期销售", "销售同比", "销量", "成交均价", "同期均价", "均价同比", "销售指数", "指数净值差", "销售占比"], modelRows, 1840)}`;
+    const modelDetail = `<div class="search-row"><input id="categoryModelSearch" type="search" placeholder="搜索型号、编码、系列或形态" /></div>${table(["排名", "型号", "销售额", "同期销售", "销售同比", "销量", "成交均价", "同期均价", "均价同比", "销售指数", "指数净值差", "销售占比", "形态分类", "产品编码", "系列", "核心品"], modelRows, 1540)}`;
 
     return `${renderSalesKpis(currentRows, priorRows)}
       <section class="content-grid">
@@ -1409,6 +1413,15 @@ if (window.WATER_HEATER_DATA_READY) {
       const query = categoryModelSearch.value.trim().toLowerCase();
       document.querySelectorAll("[data-category-model-row]").forEach((row) => { row.hidden = !row.dataset.categoryModelRow.includes(query); });
     });
+    document.querySelectorAll("[data-open-model-detail]").forEach((button) => button.addEventListener("click", () => {
+      state.tab = "core";
+      state.modelScope = "all";
+      state.selectedModel = button.dataset.openModelDetail;
+      state.compareModels = [];
+      renderTabs();
+      renderDashboard();
+      requestAnimationFrame(() => document.querySelector(".model-control-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }));
     document.querySelectorAll("[data-toggle-operating-focus]").forEach((button) => button.addEventListener("click", () => {
       state.showOperatingFocus = !state.showOperatingFocus;
       renderDashboard();
