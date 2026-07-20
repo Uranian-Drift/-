@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const version = "20260720h";
+  const version = "20260720k";
   const parts = [
     "water-heater-data-00.txt",
     "water-heater-data-01.txt",

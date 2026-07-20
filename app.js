@@ -630,11 +630,49 @@ if (window.WATER_HEATER_DATA_READY) {
       { name: "其余产品", currentRows: mergedCurrentRows.filter((row) => !isWatchedShapeModel(row)), priorRows: mergedPriorRows.filter((row) => !isWatchedShapeModel(row)) },
     ];
     const shapeRowsByName = (rows, name) => rows.filter((row) => shapeStructureValue(row) === name);
+    const butterflyDetailRules = [
+      (value) => value.includes("-16M1-"),
+      (value) => value.includes("-02-MS16T1-"),
+      (value) => value.includes("-16M1PRO-"),
+      (value) => value.includes("-MS16T2-"),
+      (value) => value.includes("-18M2-"),
+      (value) => value.includes("-18M2PRO-"),
+      (value) => value.includes("-18M2MAX-"),
+    ];
+    const butterflyDetailRank = (model) => {
+      const source = `${model.product.name || ""} ${model.product.code || ""}`
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const searchable = `-${source}-`;
+      return butterflyDetailRules.findIndex((matches) => matches(searchable));
+    };
     const detailGroupsForShape = (name) => {
       if (name === "其他") return otherShapeDetailGroups;
       const shapeCurrentRows = shapeRowsByName(currentRows, name);
       const shapePriorRows = shapeRowsByName(priorRows, name);
-      return modelCatalog(shapeCurrentRows, shapePriorRows, "all").map((model) => ({
+      const shapeModels = modelCatalog(shapeCurrentRows, shapePriorRows, "all");
+      if (name.startsWith("蝶翼")) {
+        const rankedModels = shapeModels.map((model) => ({ model, rank: butterflyDetailRank(model) }));
+        const selectedGroups = rankedModels
+          .filter((item) => item.rank >= 0)
+          .sort((a, b) => a.rank - b.rank || b.model.current.amount - a.model.current.amount)
+          .map(({ model }) => ({
+            name: model.product.name || model.product.code || model.key,
+            currentRows: model.currentRows,
+            priorRows: model.priorRows,
+          }));
+        const remainingModels = rankedModels.filter((item) => item.rank < 0).map((item) => item.model);
+        if (remainingModels.length) {
+          selectedGroups.push({
+            name: "其余产品",
+            currentRows: remainingModels.flatMap((model) => model.currentRows),
+            priorRows: remainingModels.flatMap((model) => model.priorRows),
+          });
+        }
+        return selectedGroups;
+      }
+      return shapeModels.map((model) => ({
         name: model.product.name || model.product.code || model.key,
         currentRows: model.currentRows,
         priorRows: model.priorRows,
