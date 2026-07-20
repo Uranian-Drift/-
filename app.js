@@ -115,7 +115,8 @@ if (window.WATER_HEATER_DATA_READY) {
     priceUpper: 4000,
     shapeBreakdownMode: "newClassification",
     splitButterfly: false,
-    showNewShapeDetail: false,
+    expandedShapeDetails: new Set(),
+    showShapeAmountDelta: true,
     showOperatingFocus: true,
     storeSelected: "",
     storeSort: "desc",
@@ -139,6 +140,12 @@ if (window.WATER_HEATER_DATA_READY) {
   const formatInteger = (value) => Math.round(Number(value || 0)).toLocaleString("zh-CN");
   const formatWan = (value) => `${Math.round(Number(value || 0) / 10000).toLocaleString("zh-CN")}万`;
   const formatCurrency = (value) => `¥${Math.round(Number(value || 0)).toLocaleString("zh-CN")}`;
+  const formatSignedWan = (value) => {
+    if (!Number.isFinite(value)) return "-";
+    const rounded = Math.round(value / 10000);
+    const prefix = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+    return `${prefix}${Math.abs(rounded).toLocaleString("zh-CN")}万`;
+  };
   const formatDecimal = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits) : "-";
   const signClass = (value) => !Number.isFinite(value) || value === 0 ? "neutral" : value > 0 ? "positive" : "negative";
   const formatSignedPct = (value, digits = 1) => Number.isFinite(value) ? `${value >= 0 ? "+" : ""}${(value * 100).toFixed(digits)}%` : "-";
@@ -576,10 +583,13 @@ if (window.WATER_HEATER_DATA_READY) {
     const shapes = sortShapesByPriority(ranking(currentRows, priorRows, shapeStructureValue));
     const totalAmount = metricSummary(currentRows).amount;
     const cardShapes = shapes.filter((item) => item.name !== "未分类" && Number(item.amount || 0) !== 0);
+    const isShapeDrillable = (name) => state.shapeBreakdownMode === "newClassification"
+      && (name === "其他" || name === "平衡机" || name.startsWith("蝶翼"));
     const structureCards = cardShapes.map((item) => {
-      const drillable = state.shapeBreakdownMode === "newClassification" && item.name === "其他";
+      const drillable = isShapeDrillable(item.name);
       if (drillable) {
-        return `<button class="structure-card shape-drilldown-card ${state.showNewShapeDetail ? "expanded" : ""}" type="button" data-toggle-new-shape-detail aria-expanded="${state.showNewShapeDetail}"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small><em>${state.showNewShapeDetail ? "收起型号明细" : "查看 X16F1 / P16D3"}</em></button>`;
+        const expanded = state.expandedShapeDetails.has(item.name);
+        return `<button class="structure-card shape-drilldown-card ${expanded ? "expanded" : ""}" type="button" data-toggle-shape-detail="${escapeHtml(item.name)}" aria-expanded="${expanded}"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small><em>${expanded ? "收起型号明细" : "查看型号明细"}</em></button>`;
       }
       return `<div class="structure-card"><span>${escapeHtml(item.name)}</span><strong>${formatWan(item.amount)}</strong><small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small></div>`;
     }).join("");
@@ -591,6 +601,10 @@ if (window.WATER_HEATER_DATA_READY) {
         <button type="button" class="shape-mode-button ${!state.splitButterfly ? "active" : ""}" data-butterfly-split="combined">合并展示</button>
         <button type="button" class="shape-mode-button ${state.splitButterfly ? "active" : ""}" data-butterfly-split="split">拆分18L/16L</button>
       </div></div>
+      ${state.shapeBreakdownMode === "newClassification" ? `<div class="shape-mode-row secondary"><span>销售额增减</span><div class="shape-mode-bar" role="group" aria-label="销售额增减列显示设置">
+        <button type="button" class="shape-mode-button ${state.showShapeAmountDelta ? "active" : ""}" data-shape-amount-delta="show">显示</button>
+        <button type="button" class="shape-mode-button ${!state.showShapeAmountDelta ? "active" : ""}" data-shape-amount-delta="hide">隐藏</button>
+      </div></div>` : ""}
     </div>`;
     const originalStructureRows = shapes.map((item) => {
       const share = totalAmount !== 0 ? item.amount / totalAmount : NaN;
@@ -610,37 +624,52 @@ if (window.WATER_HEATER_DATA_READY) {
     const p16d3CurrentRows = mergedCurrentRows.filter((row) => matchesShapeModel(row, "P16D3"));
     const p16d3PriorRows = mergedPriorRows.filter((row) => matchesShapeModel(row, "P16D3"));
     const isWatchedShapeModel = (row) => matchesShapeModel(row, "X16F1") || matchesShapeModel(row, "P16D3");
-    const shapeDetailGroups = [
+    const otherShapeDetailGroups = [
       { name: "X16F1", currentRows: x16f1CurrentRows, priorRows: x16f1PriorRows },
       { name: "P16D3", currentRows: p16d3CurrentRows, priorRows: p16d3PriorRows },
       { name: "其余产品", currentRows: mergedCurrentRows.filter((row) => !isWatchedShapeModel(row)), priorRows: mergedPriorRows.filter((row) => !isWatchedShapeModel(row)) },
     ];
-    const mergedCurrent = metricSummary(mergedCurrentRows);
+    const shapeRowsByName = (rows, name) => rows.filter((row) => shapeStructureValue(row) === name);
+    const detailGroupsForShape = (name) => {
+      if (name === "其他") return otherShapeDetailGroups;
+      const shapeCurrentRows = shapeRowsByName(currentRows, name);
+      const shapePriorRows = shapeRowsByName(priorRows, name);
+      return modelCatalog(shapeCurrentRows, shapePriorRows, "all").map((model) => ({
+        name: model.product.name || model.product.code || model.key,
+        currentRows: model.currentRows,
+        priorRows: model.priorRows,
+      }));
+    };
     const newStructureRows = shapes.flatMap((item) => {
       const totalShare = totalAmount ? item.amount / totalAmount : NaN;
+      const amountDelta = Math.round(item.amount) - Math.round(item.prior.amount);
       const qtyYoy = ratioChange(item.qty, item.prior.qty);
-      const priority = isLowPriorityShape(item.name) ? "监控" : "重点";
-      const drillable = item.name === "其他";
+      const drillable = isShapeDrillable(item.name);
+      const expanded = drillable && state.expandedShapeDetails.has(item.name);
       const nameCell = drillable
-        ? `<button type="button" class="shape-table-toggle" data-toggle-new-shape-detail aria-expanded="${state.showNewShapeDetail}"><span>其他</span><em>${state.showNewShapeDetail ? "收起明细" : "展开明细"}</em></button>`
+        ? `<button type="button" class="shape-table-toggle" data-toggle-shape-detail="${escapeHtml(item.name)}" aria-expanded="${expanded}"><span>${escapeHtml(item.name)}</span><em>${expanded ? "收起明细" : "展开明细"}</em></button>`
         : escapeHtml(item.name);
-      const parentRow = `<tr class="shape-parent-row ${drillable ? "shape-other-row" : ""}"><td>${nameCell}</td><td><span class="priority-chip ${priority === "重点" ? "primary" : ""}">${priority}</span></td><td>${formatCurrency(item.amount)}</td><td>${formatCurrency(item.prior.amount)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${formatInteger(item.prior.qty)}</td><td class="${signClass(qtyYoy)}">${formatSignedPct(qtyYoy)}</td><td>${formatRate(totalShare)}</td><td>${drillable ? "100.0%" : "-"}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td></tr>`;
-      if (!drillable || !state.showNewShapeDetail) return [parentRow];
-      const childRows = shapeDetailGroups.map((detail) => {
+      const amountDeltaCell = state.showShapeAmountDelta ? `<td class="${signClass(amountDelta)}">${formatSignedWan(amountDelta)}</td>` : "";
+      const parentRow = `<tr class="shape-parent-row ${drillable ? "shape-drillable-row" : ""}"><td>${nameCell}</td><td>${formatWan(item.amount)}</td><td>${formatWan(item.prior.amount)}</td>${amountDeltaCell}<td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td>${formatInteger(item.qty)}</td><td>${formatInteger(item.prior.qty)}</td><td class="${signClass(qtyYoy)}">${formatSignedPct(qtyYoy)}</td><td>${formatRate(totalShare)}</td><td>${drillable ? "100.0%" : "-"}</td><td>${Number.isFinite(item.avgPrice) ? formatCurrency(item.avgPrice) : "-"}</td><td>${Number.isFinite(item.salesIndex) ? item.salesIndex.toFixed(3) : "-"}</td></tr>`;
+      if (!expanded) return [parentRow];
+      const childRows = detailGroupsForShape(item.name).map((detail) => {
         const current = metricSummary(detail.currentRows);
         const prior = metricSummary(detail.priorRows);
+        const detailAmountDelta = Math.round(current.amount) - Math.round(prior.amount);
         const amountYoy = ratioChange(current.amount, prior.amount);
         const detailQtyYoy = ratioChange(current.qty, prior.qty);
         const detailTotalShare = totalAmount ? current.amount / totalAmount : NaN;
-        const innerShare = mergedCurrent.amount ? current.amount / mergedCurrent.amount : NaN;
-        return `<tr class="shape-detail-child"><td><span class="shape-child-label">${escapeHtml(detail.name)}</span></td><td><span class="priority-chip">明细</span></td><td>${formatCurrency(current.amount)}</td><td>${formatCurrency(prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(current.qty)}</td><td>${formatInteger(prior.qty)}</td><td class="${signClass(detailQtyYoy)}">${formatSignedPct(detailQtyYoy)}</td><td>${formatRate(detailTotalShare)}</td><td>${formatRate(innerShare)}</td><td>${Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-"}</td><td>${Number.isFinite(current.salesIndex) ? current.salesIndex.toFixed(3) : "-"}</td></tr>`;
+        const innerShare = item.amount ? current.amount / item.amount : NaN;
+        const detailAmountDeltaCell = state.showShapeAmountDelta ? `<td class="${signClass(detailAmountDelta)}">${formatSignedWan(detailAmountDelta)}</td>` : "";
+        return `<tr class="shape-detail-child"><td><span class="shape-child-label">${escapeHtml(detail.name)}</span></td><td>${formatWan(current.amount)}</td><td>${formatWan(prior.amount)}</td>${detailAmountDeltaCell}<td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(current.qty)}</td><td>${formatInteger(prior.qty)}</td><td class="${signClass(detailQtyYoy)}">${formatSignedPct(detailQtyYoy)}</td><td>${formatRate(detailTotalShare)}</td><td>${formatRate(innerShare)}</td><td>${Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-"}</td><td>${Number.isFinite(current.salesIndex) ? current.salesIndex.toFixed(3) : "-"}</td></tr>`;
       });
       return [parentRow, ...childRows];
     });
+    const newStructureHeaders = [shapeMode.column, "本期销售额", "同期销售额", ...(state.showShapeAmountDelta ? ["销售额增减"] : []), "销售同比", "本期销量", "同期销量", "销量同比", "总盘占比", "分类内占比", "均价", "销售指数"];
     const structureTable = state.shapeBreakdownMode === "newClassification"
-      ? table([shapeMode.column, "层级", "本期销售额", "同期销售额", "销售同比", "本期销量", "同期销量", "销量同比", "总盘占比", "其他内占比", "均价", "销售指数"], newStructureRows, 1450)
+      ? `<div class="new-shape-table">${table(newStructureHeaders, newStructureRows, state.showShapeAmountDelta ? 1380 : 1270)}</div>`
       : table([shapeMode.column, "优先级", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], originalStructureRows, 720);
-    const shapeModeDescription = `${shapeMode.subtitle}；蝶翼${state.splitButterfly ? "按M2=18L、M0/M1=16L拆分" : "合并展示"}${state.shapeBreakdownMode === "newClassification" ? "；点击其他可在本表中展开重点型号" : ""}`;
+    const shapeModeDescription = `${shapeMode.subtitle}；蝶翼${state.splitButterfly ? "按M2=18L、M0/M1=16L拆分" : "合并展示"}${state.shapeBreakdownMode === "newClassification" ? "；蝶翼、平衡机与其他均可独立展开型号明细" : ""}`;
     const modelRows = categoryModels.map((item, index) => {
       const amountYoy = ratioChange(item.current.amount, item.prior.amount);
       const avgPriceYoy = ratioChange(item.current.avgPrice, item.prior.avgPrice);
@@ -1430,16 +1459,27 @@ if (window.WATER_HEATER_DATA_READY) {
       const mode = button.dataset.shapeBreakdown;
       if (!SHAPE_BREAKDOWN_MODES[mode] || state.shapeBreakdownMode === mode) return;
       state.shapeBreakdownMode = mode;
+      state.expandedShapeDetails.clear();
       renderDashboard();
     }));
     document.querySelectorAll("[data-butterfly-split]").forEach((button) => button.addEventListener("click", () => {
       const splitButterfly = button.dataset.butterflySplit === "split";
       if (state.splitButterfly === splitButterfly) return;
       state.splitButterfly = splitButterfly;
+      state.expandedShapeDetails.clear();
       renderDashboard();
     }));
-    document.querySelectorAll("[data-toggle-new-shape-detail]").forEach((button) => button.addEventListener("click", () => {
-      state.showNewShapeDetail = !state.showNewShapeDetail;
+    document.querySelectorAll("[data-shape-amount-delta]").forEach((button) => button.addEventListener("click", () => {
+      const showShapeAmountDelta = button.dataset.shapeAmountDelta === "show";
+      if (state.showShapeAmountDelta === showShapeAmountDelta) return;
+      state.showShapeAmountDelta = showShapeAmountDelta;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-toggle-shape-detail]").forEach((button) => button.addEventListener("click", () => {
+      const name = button.dataset.toggleShapeDetail;
+      if (!name) return;
+      if (state.expandedShapeDetails.has(name)) state.expandedShapeDetails.delete(name);
+      else state.expandedShapeDetails.add(name);
       renderDashboard();
     }));
     const search = document.getElementById("accountingSearch");

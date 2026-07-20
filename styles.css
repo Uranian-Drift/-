@@ -2871,6 +2871,22 @@ body.v42 {
   content: "";
 }
 
+.v42 #shape-structure .new-shape-table .data-table {
+  table-layout: fixed;
+}
+
+.v42 #shape-structure .new-shape-table .data-table th:first-child,
+.v42 #shape-structure .new-shape-table .data-table td:first-child {
+  width: 170px;
+  min-width: 170px;
+}
+
+.v42 #shape-structure .new-shape-table .data-table th:not(:first-child),
+.v42 #shape-structure .new-shape-table .data-table td:not(:first-child) {
+  width: 110px;
+  min-width: 110px;
+}
+
 .v42 .priority-chip {
   border-radius: 7px;
   color: #596273;
