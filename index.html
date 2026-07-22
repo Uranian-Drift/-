@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#971d22" />
-    <title>电商GTM AI经营分析系统 4.5</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%238b1720'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='31' font-family='Arial' font-weight='700' fill='white'%3E4.5%3C/text%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20260721a" />
+    <title>电商GTM AI经营分析系统 4.6</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%238b1720'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='31' font-family='Arial' font-weight='700' fill='white'%3E4.6%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css?v=20260722f" />
   </head>
   <body class="v42">
     <div class="page-shell">
@@ -15,9 +15,9 @@
           <div class="brand-overline">
             <span class="brand-mark" aria-hidden="true"></span>
             <p class="eyebrow">Water Heater GTM Intelligence Copilot</p>
-            <span class="version-badge">Deep Intelligence 4.5</span>
+            <span class="version-badge">Deep Intelligence 4.6</span>
           </div>
-          <h1>电商GTM AI经营分析系统 <span>4.5</span></h1>
+          <h1>电商GTM AI经营分析系统 <span>4.6</span></h1>
           <p class="source-line" id="sourceLine">正在读取本地数据快照…</p>
         </div>
         <div class="header-actions">
@@ -31,40 +31,45 @@
       <main class="dashboard-main">
         <nav class="tabs" aria-label="一级模块" id="tabs"></nav>
 
-        <section class="filter-panel glass" aria-label="全局筛选">
+        <section class="filter-panel glass" id="globalFilterPanel" aria-label="全局筛选">
           <div class="filter-panel-heading">
             <div>
               <p class="eyebrow">Control Center</p>
               <h2>全局筛选</h2>
             </div>
-            <span>所有模块同步更新</span>
+            <div class="filter-panel-actions">
+              <span>所有模块同步更新</span>
+              <button class="filter-toggle-action" id="toggleFilters" type="button" aria-expanded="true" aria-controls="filterPanelBody">隐藏筛选</button>
+            </div>
           </div>
-          <div class="filter-row unified-filters">
-            <label class="field date-field">
-              <span>开始日期</span>
-              <input id="startDate" type="date" />
-            </label>
-            <label class="field date-field">
-              <span>结束日期</span>
-              <input id="endDate" type="date" />
-            </label>
-            <div class="multi-filter" id="channelFilter"></div>
-            <div class="multi-filter" id="businessFilter"></div>
-            <div class="multi-filter" id="shapeFilter"></div>
-            <div class="multi-filter" id="seriesFilter"></div>
-            <div class="multi-filter" id="coreFilter"></div>
-            <div class="multi-filter" id="positionFilter"></div>
-            <button class="reset-action" id="resetFilters" type="button">重置筛选</button>
+          <div class="filter-panel-body" id="filterPanelBody">
+            <div class="filter-row unified-filters">
+              <label class="field date-field">
+                <span>开始日期</span>
+                <input id="startDate" type="date" />
+              </label>
+              <label class="field date-field">
+                <span>结束日期</span>
+                <input id="endDate" type="date" />
+              </label>
+              <div class="multi-filter" id="channelFilter"></div>
+              <div class="multi-filter" id="businessFilter"></div>
+              <div class="multi-filter" id="shapeFilter"></div>
+              <div class="multi-filter" id="seriesFilter"></div>
+              <div class="multi-filter" id="coreFilter"></div>
+              <div class="multi-filter" id="positionFilter"></div>
+              <button class="reset-action" id="resetFilters" type="button">重置筛选</button>
+            </div>
+            <div class="quick-date-row" aria-label="快捷日期">
+              <span>快捷日期</span>
+              <button type="button" data-date-preset="month">本月</button>
+              <button type="button" data-date-preset="yearToDate">本年年累</button>
+              <button type="button" data-date-preset="last7">近7天</button>
+              <button type="button" data-date-preset="last30">近30天</button>
+              <button type="button" data-date-preset="previousMonth">上月</button>
+            </div>
+            <div class="filter-summary" id="filterSummary" aria-live="polite"></div>
           </div>
-          <div class="quick-date-row" aria-label="快捷日期">
-            <span>快捷日期</span>
-            <button type="button" data-date-preset="month">本月</button>
-            <button type="button" data-date-preset="yearToDate">本年年累</button>
-            <button type="button" data-date-preset="last7">近7天</button>
-            <button type="button" data-date-preset="last30">近30天</button>
-            <button type="button" data-date-preset="previousMonth">上月</button>
-          </div>
-          <div class="filter-summary" id="filterSummary" aria-live="polite"></div>
         </section>
 
         <div id="ai-panel" class="ai-panel glass" hidden aria-live="polite"></div>
@@ -103,11 +108,6 @@
             <input type="file" accept=".xlsx,.xls" data-upload="产品索引表" />
           </label>
           <label class="upload-card">
-            <span>出库数据</span>
-            <small>2025 / 2026 出库明细</small>
-            <input type="file" accept=".xlsx,.xls" data-upload="出库数据" />
-          </label>
-          <label class="upload-card">
             <span>行业数据</span>
             <small>奥维月度监测</small>
             <input type="file" accept=".xlsx,.xls" data-upload="行业数据" />
@@ -129,7 +129,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="water-heater-data-loader.js?v=20260721a"></script>
-    <script type="module" src="app.js?v=20260721a"></script>
+    <script src="water-heater-data-loader.js?v=20260722f"></script>
+    <script type="module" src="app.js?v=20260722f"></script>
   </body>
 </html>

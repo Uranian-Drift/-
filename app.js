@@ -1,5 +1,5 @@
-import { createDeepChatController } from "./ai/deep-chat-controller.js";
-import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js";
+import { createDeepChatController } from "./ai/deep-chat-controller.js?v=20260722b";
+import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js?v=20260722b";
 
 if (window.WATER_HEATER_DATA_READY) {
   try {
@@ -34,11 +34,6 @@ if (window.WATER_HEATER_DATA_READY) {
     record.product = products[record.productId] || {};
     return record;
   });
-  const outbound = (DATA.outbound || []).map((row) => {
-    const record = zip(DATA.outboundFields, row);
-    record.product = products[record.productId] || {};
-    return record;
-  });
   const ovi = DATA.ovi.map((row) => zip(DATA.oviFields, row));
   const PRICE_BANDS = ["2000以下", "2000–2500", "2500–3000", "3000–3500", "3500–4000", "4000以上"];
 
@@ -48,7 +43,6 @@ if (window.WATER_HEATER_DATA_READY) {
     ["store", "店铺效率"],
     ["core", "型号效率"],
     ["industry", "行业-奥维"],
-    ["outbound", "出库与动销"],
   ];
 
   const uniqueSorted = (values) => [...new Set(values.filter((value) => value !== "" && value != null))]
@@ -96,7 +90,7 @@ if (window.WATER_HEATER_DATA_READY) {
   const focusRowsByShape = (rows) => rows.filter((row) => !isLowPriorityShape(shapeStructureValue(row)));
 
   const FILTERS = {
-    channel: { label: "渠道", options: uniqueSorted([...sales, ...outbound].map((row) => dimValue(row, "channel"))) },
+    channel: { label: "渠道", options: uniqueSorted(sales.map((row) => dimValue(row, "channel"))) },
     business: { label: "业务部", options: uniqueSorted(sales.map((row) => dimValue(row, "business"))) },
     shape: { label: "形态分类", options: uniqueSorted(sales.map((row) => dimValue(row, "shape"))) },
     series: { label: "系列", options: uniqueSorted(sales.map((row) => dimValue(row, "series"))) },
@@ -118,6 +112,9 @@ if (window.WATER_HEATER_DATA_READY) {
     expandedShapeDetails: new Set(),
     showShapeAmountDelta: true,
     showOperatingFocus: true,
+    priceImpactDimension: "model",
+    priceImpactSort: "absolute",
+    showPriceImpactDetail: true,
     storeSelected: "",
     storeSort: "desc",
     modelScope: "core",
@@ -128,11 +125,11 @@ if (window.WATER_HEATER_DATA_READY) {
   const aiState = {
     open: false,
     chat: null,
-    mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V45") || "deep"; } catch { return "deep"; } })(),
+    mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V46") || "deep"; } catch { return "deep"; } })(),
     contextOpen: false,
   };
   const chatController = createDeepChatController({
-    dataSources: { sales, outbound, ovi, meta: DATA.meta },
+    dataSources: { sales, ovi, meta: DATA.meta },
     getDashboardFilters: getCurrentDashboardFilters,
     getBusinessContext: getSavedAiBusinessContext,
   });
@@ -145,6 +142,12 @@ if (window.WATER_HEATER_DATA_READY) {
     const rounded = Math.round(value / 10000);
     const prefix = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
     return `${prefix}${Math.abs(rounded).toLocaleString("zh-CN")}万`;
+  };
+  const formatSignedCurrency = (value) => {
+    if (!Number.isFinite(value)) return "-";
+    const rounded = Math.round(value);
+    const prefix = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+    return `${prefix}¥${Math.abs(rounded).toLocaleString("zh-CN")}`;
   };
   const formatDecimal = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits) : "-";
   const signClass = (value) => !Number.isFinite(value) || value === 0 ? "neutral" : value > 0 ? "positive" : "negative";
@@ -178,30 +181,6 @@ if (window.WATER_HEATER_DATA_READY) {
       && passesDimensionFilters(record, ignoredKeys)
       && (!coreOnly || record.product.core)
     ));
-  }
-
-  function outboundForRange(start, end) {
-    const keys = ["channel", "shape", "series", "core", "position"];
-    return outbound.filter((record) => (
-      record.date >= start
-      && record.date <= end
-      && keys.every((key) => state.selections[key].has(dimValue(record, key)))
-    ));
-  }
-
-  function outboundSummary(rows) {
-    const qty = rows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
-    const dates = new Set(rows.map((row) => row.date));
-    const productsCovered = new Set(rows.map((row) => row.productId)).size;
-    const channelsCovered = new Set(rows.map((row) => row.channel || "未标注")).size;
-    return {
-      qty,
-      days: dates.size,
-      dailyAvg: dates.size ? qty / dates.size : NaN,
-      productsCovered,
-      channelsCovered,
-      rows: rows.length,
-    };
   }
 
   function metricSummary(rows) {
@@ -363,7 +342,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function table(headers, rows, minWidth = 720) {
     const textHeaders = new Set(["日期", "店铺", "渠道", "业务部", "系列", "形态", "形态分类", "形态 / 升数", "新版形态分类", "型号", "产品编码", "经营分层", "主渠道", "主力渠道", "价位段", "升数段"]);
-    const centerHeaders = new Set(["排名", "优先级", "层级", "核心品"]);
+    const centerHeaders = new Set(["排名", "优先级", "层级", "核心品", "状态"]);
     const columnKinds = headers.map((header) => centerHeaders.has(header) ? "center" : textHeaders.has(header) ? "text" : "number");
     const decoratedRows = rows.map((row) => {
       let columnIndex = 0;
@@ -505,7 +484,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (!state.showOperatingFocus) {
       return `<section class="focus-panel focus-panel-collapsed glass">
         <div class="focus-copy">
-          <p class="eyebrow">4.5 Operating Focus</p>
+          <p class="eyebrow">4.6 Operating Focus</p>
           <h2>经营重点已隐藏</h2>
           <p>需要时可重新展开，不影响下面各模块数据展示。</p>
         </div>
@@ -533,7 +512,7 @@ if (window.WATER_HEATER_DATA_READY) {
     ];
     return `<section class="focus-panel glass">
       <div class="focus-copy">
-        <p class="eyebrow">4.5 Operating Focus</p>
+        <p class="eyebrow">4.6 Operating Focus</p>
         <h2>经营重点</h2>
         <p>首页优先展示重点形态和核心型号，减少通品、效率品、未分类对判断的干扰。</p>
         <button class="focus-toggle-button" data-toggle-operating-focus type="button">隐藏经营重点</button>
@@ -561,7 +540,6 @@ if (window.WATER_HEATER_DATA_READY) {
       ["未匹配行", formatInteger(d.unmatchedRows)],
       ["未维护系列", formatInteger(d.missingSeriesProducts)],
       ["店铺数", formatInteger(d.storeCount)],
-      ["出库截止", DATA.meta.outboundDateMax],
     ];
     const notes = [
       Number(d.unmatchedRows || 0) > 0 ? `有 ${formatInteger(d.unmatchedRows)} 行销售未匹配产品索引，建议更新索引表。` : "销售产品索引匹配正常。",
@@ -572,6 +550,195 @@ if (window.WATER_HEATER_DATA_READY) {
       <div class="health-grid">${healthItems.map(([label, value]) => `<div class="health-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>
       <ul class="focus-actions health-notes">${notes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     `, "data-health", { className: "span-2" });
+  }
+
+  function priceImpactSpec(dimension) {
+    const specs = {
+      model: {
+        label: "型号",
+        key: (row) => modelKeyOfRecord(row) || "未匹配型号",
+        name: (rows, key) => rows[0]?.product?.name || rows[0]?.product?.code || key,
+        drill: "model",
+      },
+      series: {
+        label: "系列",
+        key: (row) => dimValue(row, "series"),
+        name: (_rows, key) => key,
+        drill: "",
+      },
+      shape: {
+        label: "形态",
+        key: (row) => shapeStructureValue(row),
+        name: (_rows, key) => key,
+        drill: "",
+      },
+      channel: {
+        label: "渠道",
+        key: (row) => dimValue(row, "channel"),
+        name: (_rows, key) => key,
+        drill: "channel",
+      },
+      store: {
+        label: "店铺",
+        key: (row) => storeValue(row),
+        name: (_rows, key) => key,
+        drill: "store",
+      },
+    };
+    return specs[dimension] || specs.model;
+  }
+
+  function buildPriceImpact(currentRows, priorRows, dimension) {
+    const spec = priceImpactSpec(dimension);
+    const currentTotal = metricSummary(currentRows);
+    const priorTotal = metricSummary(priorRows);
+    const currentMap = groupRows(currentRows, spec.key);
+    const priorMap = groupRows(priorRows, spec.key);
+    const keys = new Set([...currentMap.keys(), ...priorMap.keys()]);
+    const rows = [...keys].map((key) => {
+      const currentGroupRows = currentMap.get(key) || [];
+      const priorGroupRows = priorMap.get(key) || [];
+      const current = metricSummary(currentGroupRows);
+      const prior = metricSummary(priorGroupRows);
+      const currentHasQty = Math.abs(current.qty) > 1e-9;
+      const priorHasQty = Math.abs(prior.qty) > 1e-9;
+      const currentObservedPrice = currentHasQty ? current.amount / current.qty : NaN;
+      const priorObservedPrice = priorHasQty ? prior.amount / prior.qty : NaN;
+      if (!Number.isFinite(currentObservedPrice) && !Number.isFinite(priorObservedPrice)) return null;
+      const currentPrice = Number.isFinite(currentObservedPrice) ? currentObservedPrice : priorObservedPrice;
+      const priorPrice = Number.isFinite(priorObservedPrice) ? priorObservedPrice : currentObservedPrice;
+      const currentShare = currentTotal.qty ? current.qty / currentTotal.qty : 0;
+      const priorShare = priorTotal.qty ? prior.qty / priorTotal.qty : 0;
+      const priceEffect = (currentPrice - priorPrice) * (currentShare + priorShare) / 2;
+      const mixEffect = (currentShare - priorShare) * (currentPrice + priorPrice) / 2;
+      const sourceRows = currentGroupRows.length ? currentGroupRows : priorGroupRows;
+      return {
+        key,
+        name: spec.name(sourceRows, key),
+        dimension: spec.label,
+        drill: spec.drill,
+        current,
+        prior,
+        currentObservedPrice,
+        priorObservedPrice,
+        currentPrice,
+        priorPrice,
+        currentShare,
+        priorShare,
+        shareDelta: currentShare - priorShare,
+        priceYoy: ratioChange(currentObservedPrice, priorObservedPrice),
+        priceEffect,
+        mixEffect,
+        totalEffect: priceEffect + mixEffect,
+        status: !priorHasQty && currentHasQty ? "新增" : priorHasQty && !currentHasQty ? "退出" : "持续",
+      };
+    }).filter(Boolean);
+    const currentAvg = currentTotal.avgPrice;
+    const priorAvg = priorTotal.avgPrice;
+    const avgDelta = Number.isFinite(currentAvg) && Number.isFinite(priorAvg) ? currentAvg - priorAvg : NaN;
+    let priceEffect = rows.reduce((sum, item) => sum + item.priceEffect, 0);
+    let mixEffect = rows.reduce((sum, item) => sum + item.mixEffect, 0);
+    const reconciliation = Number.isFinite(avgDelta) ? avgDelta - priceEffect - mixEffect : 0;
+    if (Number.isFinite(reconciliation) && Math.abs(reconciliation) >= 0.05) {
+      rows.push({
+        key: "__reconciliation__",
+        name: "退货/零数量金额调整",
+        dimension: spec.label,
+        drill: "",
+        current: metricSummary([]),
+        prior: metricSummary([]),
+        currentObservedPrice: NaN,
+        priorObservedPrice: NaN,
+        currentPrice: NaN,
+        priorPrice: NaN,
+        currentShare: NaN,
+        priorShare: NaN,
+        shareDelta: NaN,
+        priceYoy: NaN,
+        priceEffect: 0,
+        mixEffect: reconciliation,
+        totalEffect: reconciliation,
+        status: "口径调整",
+      });
+      mixEffect += reconciliation;
+    }
+    priceEffect = Number.isFinite(priceEffect) ? priceEffect : NaN;
+    mixEffect = Number.isFinite(mixEffect) ? mixEffect : NaN;
+    return { spec, rows, currentAvg, priorAvg, avgDelta, priceEffect, mixEffect };
+  }
+
+  function priceImpactDrillControl(item, content, className = "") {
+    if (!item.drill) return `<span class="${className}">${content}</span>`;
+    return `<button type="button" class="price-impact-link ${className}" data-price-impact-drill="${escapeHtml(item.drill)}" data-price-impact-key="${escapeHtml(item.key)}">${content}</button>`;
+  }
+
+  function priceImpactDriverList(items, emptyText) {
+    if (!items.length) return `<p class="price-impact-empty">${escapeHtml(emptyText)}</p>`;
+    const max = Math.max(...items.map((item) => Math.abs(item.totalEffect)), 1);
+    return `<div class="price-impact-driver-list">${items.map((item) => {
+      const width = Math.max(5, Math.abs(item.totalEffect) / max * 100);
+      return `<div class="price-impact-driver ${signClass(item.totalEffect)}" style="--impact-bar:${width.toFixed(1)}%">
+        <div>${priceImpactDrillControl(item, escapeHtml(item.name))}<small>自身价格 ${formatSignedCurrency(item.priceEffect)} · 结构 ${formatSignedCurrency(item.mixEffect)}</small></div>
+        <strong>${formatSignedCurrency(item.totalEffect)}</strong>
+      </div>`;
+    }).join("")}</div>`;
+  }
+
+  function renderPriceImpact(currentRows, priorRows) {
+    const dimensions = [
+      ["model", "按型号"],
+      ["series", "按系列"],
+      ["shape", "按形态"],
+      ["channel", "按渠道"],
+      ["store", "按店铺"],
+    ];
+    const sortModes = [
+      ["absolute", "影响绝对值"],
+      ["positive", "正向贡献"],
+      ["negative", "负向贡献"],
+    ];
+    const result = buildPriceImpact(currentRows, priorRows, state.priceImpactDimension);
+    if (!Number.isFinite(result.currentAvg) || !Number.isFinite(result.priorAvg)) {
+      return `<section class="content-grid price-impact-section">${panel("成交均价影响拆解", "需要本期与同期均存在有效销量后才能计算", '<div class="empty-state"><div class="empty-state-inner"><h2>当前筛选无法计算均价影响</h2><p>请调整日期或分类筛选后再查看。</p></div></div>', "price-impact", { className: "span-2" })}</section>`;
+    }
+    const positive = result.rows.filter((item) => item.totalEffect > 0.005).sort((a, b) => b.totalEffect - a.totalEffect).slice(0, 5);
+    const negative = result.rows.filter((item) => item.totalEffect < -0.005).sort((a, b) => a.totalEffect - b.totalEffect).slice(0, 5);
+    let detailItems = [...result.rows];
+    if (state.priceImpactSort === "positive") detailItems = detailItems.filter((item) => item.totalEffect > 0).sort((a, b) => b.totalEffect - a.totalEffect);
+    else if (state.priceImpactSort === "negative") detailItems = detailItems.filter((item) => item.totalEffect < 0).sort((a, b) => a.totalEffect - b.totalEffect);
+    else detailItems.sort((a, b) => Math.abs(b.totalEffect) - Math.abs(a.totalEffect));
+    const detailRows = detailItems.map((item) => `<tr>
+      <td>${priceImpactDrillControl(item, escapeHtml(item.name))}</td><td><span class="impact-status ${item.status === "新增" ? "new" : item.status === "退出" ? "exit" : ""}">${escapeHtml(item.status)}</span></td>
+      <td>${Number.isFinite(item.currentObservedPrice) ? formatCurrency(item.currentObservedPrice) : "-"}</td><td>${Number.isFinite(item.priorObservedPrice) ? formatCurrency(item.priorObservedPrice) : "-"}</td><td class="${signClass(item.priceYoy)}">${formatSignedPct(item.priceYoy)}</td>
+      <td>${formatRate(item.currentShare)}</td><td>${formatRate(item.priorShare)}</td><td class="${signClass(item.shareDelta)}">${formatSignedPoint(item.shareDelta)}</td>
+      <td class="${signClass(item.priceEffect)}">${formatSignedCurrency(item.priceEffect)}</td><td class="${signClass(item.mixEffect)}">${formatSignedCurrency(item.mixEffect)}</td><td class="${signClass(item.totalEffect)}"><strong>${formatSignedCurrency(item.totalEffect)}</strong></td>
+    </tr>`);
+    const dominant = Math.abs(result.priceEffect) >= Math.abs(result.mixEffect) ? "自身价格变化" : "销售结构变化";
+    const direction = result.avgDelta >= 0 ? "上涨" : "下降";
+    const topPositive = positive[0];
+    const topNegative = negative[0];
+    const narrative = `本期成交均价较同期${direction}${formatCurrency(Math.abs(result.avgDelta))}，其中自身价格影响${formatSignedCurrency(result.priceEffect)}，结构影响${formatSignedCurrency(result.mixEffect)}，主要由${dominant}驱动。${topPositive ? `最大正向贡献为${topPositive.name}（${formatSignedCurrency(topPositive.totalEffect)}）` : "暂无明显正向贡献"}；${topNegative ? `最大负向贡献为${topNegative.name}（${formatSignedCurrency(topNegative.totalEffect)}）` : "暂无明显负向贡献"}。`;
+    const controls = `<div class="price-impact-controls">
+      <div><span>分析维度</span><div class="price-impact-button-group">${dimensions.map(([key, label]) => `<button type="button" class="${state.priceImpactDimension === key ? "active" : ""}" data-price-impact-dimension="${key}" aria-pressed="${state.priceImpactDimension === key}">${label}</button>`).join("")}</div></div>
+      <div><span>明细排序</span><div class="price-impact-button-group">${sortModes.map(([key, label]) => `<button type="button" class="${state.priceImpactSort === key ? "active" : ""}" data-price-impact-sort="${key}" aria-pressed="${state.priceImpactSort === key}">${label}</button>`).join("")}</div></div>
+      <button type="button" class="price-impact-detail-toggle" data-toggle-price-impact-detail aria-expanded="${state.showPriceImpactDetail}">${state.showPriceImpactDetail ? "隐藏明细" : "显示明细"}</button>
+    </div>`;
+    const body = `${controls}
+      <div class="price-impact-summary">
+        <div><span>本期成交均价</span><strong>${formatCurrency(result.currentAvg)}</strong><small>销售金额 ÷ 销量</small></div>
+        <div><span>同期成交均价</span><strong>${formatCurrency(result.priorAvg)}</strong><small>上年同期同日期</small></div>
+        <div><span>均价增减</span><strong class="${signClass(result.avgDelta)}">${formatSignedCurrency(result.avgDelta)}</strong><small>${formatSignedPct(ratioChange(result.currentAvg, result.priorAvg))}</small></div>
+        <div><span>自身价格影响</span><strong class="${signClass(result.priceEffect)}">${formatSignedCurrency(result.priceEffect)}</strong><small>同组均价变化贡献</small></div>
+        <div><span>销售结构影响</span><strong class="${signClass(result.mixEffect)}">${formatSignedCurrency(result.mixEffect)}</strong><small>销量占比变化贡献</small></div>
+      </div>
+      <p class="price-impact-narrative">${escapeHtml(narrative)}</p>
+      <div class="price-impact-driver-grid">
+        <section><h3>均价正向贡献 Top 5</h3>${priceImpactDriverList(positive, "当前维度暂无正向贡献")}</section>
+        <section><h3>均价负向贡献 Top 5</h3>${priceImpactDriverList(negative, "当前维度暂无负向贡献")}</section>
+      </div>
+      ${state.showPriceImpactDetail ? `<div class="price-impact-detail">${table([result.spec.label, "状态", "本期均价", "同期均价", "均价同比", "本期销量占比", "同期销量占比", "占比增减", "自身价格影响", "结构影响", "总影响"], detailRows, 1320)}</div>` : ""}
+      <p class="price-impact-method">总影响＝自身价格影响＋销售结构影响；新增和退出项目的影响全部计入结构变化。退货或数量为0但金额不为0时单列口径调整。</p>`;
+    return `<section class="content-grid price-impact-section">${panel("成交均价影响拆解", "解释整体均价为什么变化，以及谁在拉高或拉低大盘均价", body, "price-impact", { className: "span-2" })}</section>`;
   }
 
   function renderCategory() {
@@ -726,7 +893,8 @@ if (window.WATER_HEATER_DATA_READY) {
         ${panel("形态结构", shapeModeDescription, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${structureTable}`, "shape-structure")}
         ${panel("型号经营明细", `当前共 ${formatInteger(categoryModels.length)} 个型号，默认按销售额从高到低排列`, modelDetail, "category-model-detail", { className: "span-2" })}
         ${renderDataHealthPanel()}
-      </section>`;
+      </section>
+      ${renderPriceImpact(currentRows, priorRows)}`;
   }
 
   function renderCore() {
@@ -879,7 +1047,7 @@ if (window.WATER_HEATER_DATA_READY) {
         ${metricCard("型号销售占比", formatRate(modelShare), `同比净值差 ${formatSignedPoint(shareChange)}`, shareChange, "型号销售额 ÷ 当前筛选全部型号销售额")}
         ${metricCard("型号成交均价", Number.isFinite(current.avgPrice) ? formatCurrency(current.avgPrice) : "-", `同比 ${formatSignedPct(avgPriceChange)}`, avgPriceChange, "型号销售额 ÷ 型号销量")}
         ${metricCard("型号销售指数", Number.isFinite(current.salesIndex) ? current.salesIndex.toFixed(3) : "-", `同比净值差 ${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}`, indexDelta, "型号销售金额 ÷ 核算价金额")}
-        ${metricCard("动销店铺数", formatInteger(activeStores), `政策均价 ${Number.isFinite(policyPrice) ? formatCurrency(policyPrice) : "-"}`, activeStores, "筛选期内有该型号销售记录的去重店铺数")}
+        ${metricCard("有销售店铺数", formatInteger(activeStores), `政策均价 ${Number.isFinite(policyPrice) ? formatCurrency(policyPrice) : "-"}`, activeStores, "筛选期内有该型号销售记录的去重店铺数")}
       </section>
       <section class="model-insight-grid">
         <div class="structure-card"><span>主力渠道</span><strong>${escapeHtml(topChannel?.name || "-")}</strong><small>${topChannel ? `${formatWan(topChannel.current.amount)} · 型号贡献 ${formatRate(topChannel.modelChannelContribution)}` : "当前无渠道销售"}</small></div>
@@ -888,71 +1056,12 @@ if (window.WATER_HEATER_DATA_READY) {
         <div class="structure-card"><span>头部店铺集中度</span><strong>${formatRate(topStoreShare)}</strong><small>${storeItems[0] ? escapeHtml(storeItems[0].name) : "当前无店铺销售"}</small></div>
       </section>
       <section class="content-grid">
-        ${panel("渠道销售效率", "适配指数=渠道内型号占比÷型号整体占比；大于1表示该渠道表现高于型号整体水平", table(["渠道", "销售额", "销量", "成交均价", "销售同比", "销量同比", "型号渠道贡献", "渠道内型号占比", "渠道适配指数", "动销店铺", "店均销量", "销售指数"], channelRows, 1480), "model-channel-efficiency", { className: "span-2" })}
-        ${panel("店铺销售效率", `动销店铺 ${formatInteger(activeStores)} 家；店均销量 ${activeStores ? formatDecimal(current.qty / activeStores, 1) : "-"} 台`, table(["店铺", "主渠道", "销售额", "销量", "型号贡献", "成交均价", "销售同比", "销售指数"], storeRows, 980), "model-store-efficiency", { className: "span-2" })}
-        ${panel("型号对比", state.compareModels.length ? `当前共对比 ${formatInteger(compareKeys.length)} 个型号` : "可在上方再添加1—2个型号", table(["型号", "系列", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "动销店铺", "主力渠道", "销售同比", "销量同比"], compareRows, 1380), "model-comparison")}
+        ${panel("渠道销售效率", "适配指数=渠道内型号占比÷型号整体占比；大于1表示该渠道表现高于型号整体水平", table(["渠道", "销售额", "销量", "成交均价", "销售同比", "销量同比", "型号渠道贡献", "渠道内型号占比", "渠道适配指数", "销售店铺", "店均销量", "销售指数"], channelRows, 1480), "model-channel-efficiency", { className: "span-2" })}
+        ${panel("店铺销售效率", `有销售店铺 ${formatInteger(activeStores)} 家；店均销量 ${activeStores ? formatDecimal(current.qty / activeStores, 1) : "-"} 台`, table(["店铺", "主渠道", "销售额", "销量", "型号贡献", "成交均价", "销售同比", "销售指数"], storeRows, 980), "model-store-efficiency", { className: "span-2" })}
+        ${panel("型号对比", state.compareModels.length ? `当前共对比 ${formatInteger(compareKeys.length)} 个型号` : "可在上方再添加1—2个型号", table(["型号", "系列", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "销售店铺", "主力渠道", "销售同比", "销量同比"], compareRows, 1380), "model-comparison")}
         ${panel("型号近10天表现", "展示筛选周期内最近10个有销售记录的日期，按日期由近到远排列", table(["日期", "销售额", "销量", "成交均价", "销售同比", "销量同比"], dailyRows, 720), "model-daily")}
-        ${panel(state.modelScope === "core" ? "核心型号经营明细" : "全部型号经营明细", "经营分层以当前型号销售贡献中位数和销售同比方向划分，仅用于快速定位", `<div class="search-row"><input id="allModelSearch" type="search" placeholder="搜索系列、形态、型号或编码" /></div>${table(["经营分层", "系列", "型号", "产品编码", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "动销店铺", "主力渠道", "销售同比", "销量同比"], allModelRows, 1640)}`, "all-model-detail", { className: "span-2" })}
+        ${panel(state.modelScope === "core" ? "核心型号经营明细" : "全部型号经营明细", "经营分层以当前型号销售贡献中位数和销售同比方向划分，仅用于快速定位", `<div class="search-row"><input id="allModelSearch" type="search" placeholder="搜索系列、形态、型号或编码" /></div>${table(["经营分层", "系列", "型号", "产品编码", "销售额", "销量", "销售占比", "成交均价", "政策均价", "销售指数", "销售店铺", "主力渠道", "销售同比", "销量同比"], allModelRows, 1640)}`, "all-model-detail", { className: "span-2" })}
       </section>`;
-  }
-
-  function outboundRanking(currentRows, priorRows, keyFn, limit = 30) {
-    const currentMap = groupRows(currentRows, keyFn);
-    const priorMap = groupRows(priorRows, keyFn);
-    return [...currentMap.entries()].map(([name, rows]) => {
-      const current = outboundSummary(rows);
-      const prior = outboundSummary(priorMap.get(name) || []);
-      return { name, amount: current.qty, qty: current.qty, yoy: ratioChange(current.qty, prior.qty) };
-    }).sort((a, b) => b.qty - a.qty).slice(0, limit);
-  }
-
-  function renderOutbound() {
-    const currentRows = outboundForRange(state.start, state.end);
-    const priorRows = outboundForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
-    const current = outboundSummary(currentRows);
-    const prior = outboundSummary(priorRows);
-    const qtyChange = ratioChange(current.qty, prior.qty);
-    const dailyChange = ratioChange(current.dailyAvg, prior.dailyAvg);
-    const matchTotal = Number(DATA.diagnostics.outboundValidRows || 0);
-    const matchRows = Number(DATA.diagnostics.outboundCodeMatched || 0) + Number(DATA.diagnostics.outboundNameMatched || 0);
-    const matchRate = matchTotal ? matchRows / matchTotal : NaN;
-    const currentByDate = groupRows(currentRows, (row) => row.date);
-    const priorByDate = groupRows(priorRows, (row) => row.date);
-    const trend = [...currentByDate.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([day, rows]) => {
-      const qty = outboundSummary(rows).qty;
-      const priorQty = outboundSummary(priorByDate.get(shiftYear(day, -1)) || []).qty;
-      return { name: day, amount: qty, yoy: ratioChange(qty, priorQty) };
-    });
-    const shapes = outboundRanking(currentRows, priorRows, (row) => dimValue(row, "shape"));
-    const series = outboundRanking(currentRows, priorRows, (row) => dimValue(row, "series"));
-    const channels = outboundRanking(currentRows, priorRows, (row) => dimValue(row, "channel"));
-    const totalQty = current.qty;
-    const shapeRows = shapes.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatInteger(item.qty)}</td><td>${totalQty ? `${(item.qty / totalQty * 100).toFixed(1)}%` : "-"}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td></tr>`);
-
-    return `<section class="metric-grid">
-      ${metricCard("出库台量", formatInteger(current.qty), `同比 ${formatSignedPct(qtyChange)}`, qtyChange, "筛选期内出库总量合计")}
-      ${metricCard("日均出库", Number.isFinite(current.dailyAvg) ? `${formatInteger(current.dailyAvg)}台` : "-", `同比 ${formatSignedPct(dailyChange)}`, dailyChange, "出库台量 ÷ 有出库记录的日期数")}
-      ${metricCard("出库型号数", formatInteger(current.productsCovered), `有效记录 ${formatInteger(current.rows)} 行`, NaN, "筛选期内有出库记录的去重型号数")}
-      ${metricCard("覆盖渠道", formatInteger(current.channelsCovered), `渠道贡献可下钻`, NaN, "使用国补调整后渠道，缺失时回退原渠道")}
-      ${metricCard("产品匹配率", Number.isFinite(matchRate) ? `${(matchRate * 100).toFixed(2)}%` : "-", `未匹配 ${formatInteger(DATA.diagnostics.outboundUnmatchedRows || 0)} 行`, NaN, "出库产品编码或名称匹配产品索引表")}
-    </section>
-      <p class="availability-note">库存字段仍未提供，因此库存周转天数与销存比保持为空；本页只展示真实出库数据。</p>
-      <section class="content-grid">
-        ${panel("出库分日趋势", "按出库日期汇总，与上年同期同日比较", rankList(trend, (item) => `${formatInteger(item.amount)}台`), "outbound-trend", { unit: "单位 / 台" })}
-        ${panel("形态结构", "形态分类来自最新产品索引表", table(["形态分类", "出库台量", "占比", "同比"], shapeRows, 520), "outbound-shape")}
-        ${panel("系列排行榜", "未维护系列的型号归入“未分系列”", rankList(series, (item) => `${formatInteger(item.qty)}台`), "outbound-series")}
-        ${panel("渠道贡献榜", "使用国补调整后渠道口径", rankList(channels, (item) => `${formatInteger(item.qty)}台`), "outbound-channel")}
-      </section>`;
-  }
-
-  function renderEmpty(kind) {
-    const outbound = kind === "outbound";
-    const title = outbound ? "出库与动销数据待补充" : "收入与毛利数据待补充";
-    const message = outbound
-      ? "当前文件夹未提供出库、库存或动销字段，因此本模块不展示推算值。"
-      : "当前文件夹未提供收入、成本、费用或毛利字段，因此本模块保持空态。";
-    const fields = outbound ? DATA.meta.unavailable.outbound : DATA.meta.unavailable.income;
-    return `<section class="empty-state"><div class="empty-state-inner"><p class="eyebrow">No Fabricated Metrics</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><div class="required-fields">${fields.map((field) => `<span>${escapeHtml(field)}</span>`).join("")}</div></div></section>`;
   }
 
   function monthShift(month, delta) {
@@ -1136,7 +1245,6 @@ if (window.WATER_HEATER_DATA_READY) {
     if (state.tab === "category") content.innerHTML = renderCategory();
     if (state.tab === "store") content.innerHTML = renderStore();
     if (state.tab === "core") content.innerHTML = renderCore();
-    if (state.tab === "outbound") content.innerHTML = renderOutbound();
     if (state.tab === "industry") content.innerHTML = renderIndustry();
     if (state.tab === "channel") content.innerHTML = renderChannel();
     attachDynamicEvents();
@@ -1144,7 +1252,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (aiState.open) renderAiPanel();
   }
 
-  const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V45";
+  const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V46";
 
   function getSavedAiBusinessContext() {
     const fallback = { currentGoal: "", priorities: "", campaigns: "", constraints: "", notes: "" };
@@ -1212,12 +1320,12 @@ if (window.WATER_HEATER_DATA_READY) {
     const messages = chat.messages || [];
     const stage = chat.stage || { label: "等待提问", progress: 0 };
     const businessContext = getSavedAiBusinessContext();
-    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>把它当作经营分析师来用</strong><p>可以直接问“为什么”“问题在哪”“接下来怎么做”。4.5 会自动拆成多项查询，同时读取销售、出库、奥维和产品索引，并对结论做第二遍复核。</p></div>`;
+    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>把它当作经营分析师来用</strong><p>可以直接问“为什么”“问题在哪”“接下来怎么做”。4.6 会自动拆成多项查询，同时读取销售、奥维和产品索引，并对结论做第二遍复核。</p></div>`;
     const modeButtons = Object.entries(AI_MODES).map(([key, mode]) => `<button type="button" class="ai-mode-button ${aiState.mode === key ? "active" : ""}" data-ai-mode="${key}" ${chat.running ? "disabled" : ""}><strong>${escapeHtml(mode.label)}</strong><span>${escapeHtml(mode.description)}</span></button>`).join("");
 
     aiPanel.hidden = false;
     aiPanel.innerHTML = `<div class="ai-panel-header">
-      <div><p class="eyebrow">GTM AI COPILOT 4.5</p><h2>深度经营分析</h2><p>当前范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条销售记录。你的问题会自动转成多项证据查询。</p></div>
+      <div><p class="eyebrow">GTM AI COPILOT 4.6</p><h2>深度经营分析</h2><p>当前范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条销售记录。你的问题会自动转成多项证据查询。</p></div>
       <div class="ai-panel-actions"><button id="toggleAiContext" class="ghost-action" type="button">${aiState.contextOpen ? "收起经营背景" : "编辑经营背景"}</button><button id="clearAiConversation" class="ghost-action" type="button" ${chat.running ? "disabled" : ""}>清空对话</button><button id="closeAiPanel" class="close-button" type="button">收起AI面板</button></div>
     </div>
     <div class="ai-mode-grid" aria-label="分析模式">${modeButtons}</div>
@@ -1231,14 +1339,14 @@ if (window.WATER_HEATER_DATA_READY) {
         <label class="wide">补充说明<textarea id="aiContextNotes" rows="2" placeholder="可填写口径变化、异常订单、渠道特殊情况">${escapeHtml(businessContext.notes || "")}</textarea></label>
       </div>
     </section>
-    <div class="ai-scope-bar"><span>数据范围</span><strong>${escapeHtml(state.start)} 至 ${escapeHtml(state.end)}</strong><span>${state.selections.channel.size === FILTERS.channel.options.length ? "全部渠道" : escapeHtml([...state.selections.channel].join("、"))}</span><span>销售 + 出库 + 奥维 + 产品索引</span><span>会话记忆 ${Math.floor(messages.length / 2)} 轮</span><span>原始明细不发送</span></div>
+    <div class="ai-scope-bar"><span>数据范围</span><strong>${escapeHtml(state.start)} 至 ${escapeHtml(state.end)}</strong><span>${state.selections.channel.size === FILTERS.channel.options.length ? "全部渠道" : escapeHtml([...state.selections.channel].join("、"))}</span><span>销售 + 奥维 + 产品索引</span><span>会话记忆 ${Math.floor(messages.length / 2)} 轮</span><span>原始明细不发送</span></div>
     ${chat.running ? `<div class="ai-analysis-progress"><div><strong>${escapeHtml(stage.label || "正在分析")}</strong><span>${Math.round(stage.progress || 0)}%</span></div><div class="ai-progress-track"><i style="width:${Math.max(4, Math.min(100, Number(stage.progress || 0)))}%"></i></div></div>` : ""}
     <div class="ai-recommendations" aria-label="推荐问题">${RECOMMENDED_QUESTIONS.map((question) => `<button type="button" data-ai-question="${escapeHtml(question)}" ${chat.running ? "disabled" : ""}>${escapeHtml(question)}</button>`).join("")}</div>
     <section class="ai-chat-log" id="aiChatLog" aria-live="polite">${conversation}${chat.running ? `<div class="ai-thinking"><span class="ai-pulse"></span><span>${escapeHtml(stage.label || "正在分析")}</span></div>` : ""}</section>
     ${chat.error ? `<p class="ai-chat-error">${escapeHtml(chat.error)}</p>` : ""}
     <form class="ai-composer" id="aiComposer">
       <label for="aiQuestion">经营问题</label>
-      <textarea id="aiQuestion" rows="4" maxlength="1000" placeholder="例如：结合销售、出库和奥维，诊断本年M1/M2/N核心品增长质量，找出主要驱动、风险和未来30天动作。" ${chat.running ? "disabled" : ""}></textarea>
+      <textarea id="aiQuestion" rows="4" maxlength="1000" placeholder="例如：结合销售和奥维，诊断本年M1/M2/N核心品增长质量，找出主要驱动、风险和未来30天动作。" ${chat.running ? "disabled" : ""}></textarea>
       <div><span>Enter发送 · Shift+Enter换行</span><button class="ai-action" type="submit" ${chat.running ? "disabled" : ""}>${chat.running ? "分析中…" : "开始深度分析"}</button></div>
     </form>
     <p class="ai-security-note">四阶段分析：理解问题 → 本地多查询取证 → 经营分析 → 独立复核。DeepSeek只接收聚合后的证据包，不接收订单级原始数据；前端不保存API Key。</p>`;
@@ -1261,7 +1369,7 @@ if (window.WATER_HEATER_DATA_READY) {
     });
     document.querySelectorAll("[data-ai-mode]").forEach((button) => button.addEventListener("click", () => {
       aiState.mode = button.dataset.aiMode;
-      localStorage.setItem("WATER_HEATER_AI_MODE_V45", aiState.mode);
+      localStorage.setItem("WATER_HEATER_AI_MODE_V46", aiState.mode);
       chatController.setMode(aiState.mode);
     }));
     document.querySelectorAll("[data-ai-question], [data-ai-followup]").forEach((button) => button.addEventListener("click", () => {
@@ -1371,11 +1479,6 @@ if (window.WATER_HEATER_DATA_READY) {
       document.getElementById("filterSummary").textContent = `当前行业-奥维命中 ${formatInteger(rows.length)} 条聚合记录；自定义价格区间 ${formatInteger(lower)}–${formatInteger(upper)} 元${fallback ? `；日期无对应奥维数据，使用 ${DATA.meta.oviMonthMax}` : ""}。`;
       return;
     }
-    if (state.tab === "outbound") {
-      const total = outboundForRange(state.start, state.end).length;
-      document.getElementById("filterSummary").textContent = `当前筛选命中 ${formatInteger(total)} 行出库记录；业务部字段不在出库源表中，不参与本页筛选。`;
-      return;
-    }
     if (state.tab === "store") {
       const total = salesForRange(state.start, state.end).length;
       const storeRows = state.storeSelected ? salesForRange(state.start, state.end).filter((row) => storeValue(row) === state.storeSelected) : [];
@@ -1437,6 +1540,43 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function attachDynamicEvents() {
     document.querySelectorAll("[data-download-panel]").forEach((button) => button.addEventListener("click", () => downloadPanel(button.dataset.downloadPanel)));
+    document.querySelectorAll("[data-price-impact-dimension]").forEach((button) => button.addEventListener("click", () => {
+      const dimension = button.dataset.priceImpactDimension;
+      if (!priceImpactSpec(dimension) || state.priceImpactDimension === dimension) return;
+      state.priceImpactDimension = dimension;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-price-impact-sort]").forEach((button) => button.addEventListener("click", () => {
+      const mode = ["absolute", "positive", "negative"].includes(button.dataset.priceImpactSort) ? button.dataset.priceImpactSort : "absolute";
+      if (state.priceImpactSort === mode) return;
+      state.priceImpactSort = mode;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-toggle-price-impact-detail]").forEach((button) => button.addEventListener("click", () => {
+      state.showPriceImpactDetail = !state.showPriceImpactDetail;
+      renderDashboard();
+    }));
+    document.querySelectorAll("[data-price-impact-drill]").forEach((button) => button.addEventListener("click", () => {
+      const type = button.dataset.priceImpactDrill;
+      const key = button.dataset.priceImpactKey || "";
+      if (!key) return;
+      if (type === "model") {
+        state.tab = "core";
+        state.modelScope = "all";
+        state.selectedModel = key;
+        state.compareModels = [];
+      } else if (type === "channel") {
+        state.tab = "channel";
+        state.selections.channel = new Set([key]);
+        renderMultiFilter("channelFilter", "channel");
+      } else if (type === "store") {
+        state.tab = "store";
+        state.storeSelected = key;
+      } else return;
+      renderTabs();
+      renderDashboard();
+      requestAnimationFrame(() => document.querySelector(type === "model" ? ".model-control-panel" : type === "store" ? ".store-control-panel" : ".content-grid")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }));
     document.querySelectorAll("[data-model-scope]").forEach((button) => button.addEventListener("click", () => {
       const scope = button.dataset.modelScope === "all" ? "all" : "core";
       if (scope === state.modelScope) return;
@@ -1621,8 +1761,6 @@ if (window.WATER_HEATER_DATA_READY) {
       ["政策价缺失行", formatInteger(d.missingPolicyRows)],
       ["店铺数量", formatInteger(d.storeCount)],
       ["店铺缺失行", formatInteger(d.missingStoreRows)],
-      ["有效出库行", formatInteger(d.outboundValidRows)],
-      ["出库未匹配", formatInteger(d.outboundUnmatchedRows)],
       ["奥维明细", formatInteger(d.oviSourceRows)],
     ];
     document.getElementById("diagnosticGrid").innerHTML = diagnostics.map(([label, value]) => `<div class="diagnostic-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
@@ -1632,7 +1770,6 @@ if (window.WATER_HEATER_DATA_READY) {
       "销售指数按销售金额 ÷ 核算价金额合计计算；分母为 0 时显示“-”。",
       `政策价直接取销售明细“通用政策价(元)”字段，覆盖 ${formatInteger(d.policyAvailableRows)} 行。`,
       `店铺维度使用销售 Excel 的“客户名称/客户”字段，当前有效店铺 ${formatInteger(d.storeCount)} 个，缺失 ${formatInteger(d.missingStoreRows)} 行。`,
-      `出库有效记录 ${formatInteger(d.outboundValidRows)} 行，产品匹配 ${formatInteger(d.outboundCodeMatched + d.outboundNameMatched)} 行。`,
       `奥维已更新至 ${DATA.meta.oviMonthMax}；单价取奥维“单价”字段，价位段仍按六档左闭右开边界划分。`,
     ].map((note) => `<p>${escapeHtml(note)}</p>`).join("");
   }
@@ -1642,11 +1779,10 @@ if (window.WATER_HEATER_DATA_READY) {
       ["销售来源", `${DATA.meta.files[1]}；${DATA.meta.files[2]}。有效日期 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax}。`],
       ["店铺维度", "店铺取销售 Excel 的客户字段，优先使用“客户名称”，缺失时回退“客户/店铺/客户编号”；店铺内占比为型号销售额 ÷ 所选店铺销售额。"],
       ["产品分类", `${DATA.meta.files[0]}。系列、核心品、形态分类、定位、能效均直接取索引表。`],
-      ["出库来源", `${DATA.meta.files[3]}。有效日期 ${DATA.meta.outboundDateMin} 至 ${DATA.meta.outboundDateMax}，渠道使用国补调整后口径。`],
       ["政策价来源", "直接取销售明细中的“通用政策价(元)”字段，不再使用旧政策价参照表按月份和产品名称匹配。"],
       ["行业来源", `${DATA.meta.files[4]}。覆盖 ${DATA.meta.oviMonthMin} 至 ${DATA.meta.oviMonthMax}，品牌配置为“${DATA.meta.brand}”。`],
       ["价位段口径", "奥维单价字段与销额÷销量一致；固定结构分为2000以下、2000–2500、2500–3000、3000–3500、3500–4000、4000以上，自定义区间上下限均包含。"],
-      ["同比口径", "销售与出库按上年同期同日；奥维按上年同期月份。分母为0或无同期时显示“-”。"],
+      ["同比口径", "销售按上年同期同日；奥维按上年同期月份。分母为0或无同期时显示“-”。"],
       ["销售指数", "销售金额 ÷ 核算价金额合计。原始核算价字段已包含数量影响。"],
       ["运行时派生指标", "价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
       ["AI分析上下文", "DeepSeek负责查询规划与结果解释；本地引擎执行白名单筛选、聚合、对比和异常计算，仅发送压缩结果，不发送完整原始明细。"],
@@ -1716,7 +1852,19 @@ if (window.WATER_HEATER_DATA_READY) {
 
   document.getElementById("resetFilters").addEventListener("click", resetFilters);
 
-  document.getElementById("sourceLine").textContent = `【更新时间：${DATA.meta.generatedAt}】【读取文件：${DATA.meta.files.join(" / ")}】`;
+  const globalFilterPanel = document.getElementById("globalFilterPanel");
+  const filterPanelBody = document.getElementById("filterPanelBody");
+  const toggleFilters = document.getElementById("toggleFilters");
+  toggleFilters.addEventListener("click", () => {
+    const shouldHide = !filterPanelBody.hidden;
+    filterPanelBody.hidden = shouldHide;
+    globalFilterPanel.classList.toggle("collapsed", shouldHide);
+    toggleFilters.setAttribute("aria-expanded", String(!shouldHide));
+    toggleFilters.textContent = shouldHide ? "显示筛选" : "隐藏筛选";
+    if (shouldHide) document.querySelectorAll(".filter-menu").forEach((menu) => { menu.hidden = true; });
+  });
+
+  document.getElementById("sourceLine").textContent = `【更新时间：${DATA.meta.generatedAt}】【读取文件：${DATA.meta.files.filter((name) => !String(name).includes("出库")).join(" / ")}】`;
   document.getElementById("freshnessPill").textContent = `销售截止 ${DATA.meta.salesDateMax}`;
   chatController.setOnChange((snapshot) => {
     aiState.chat = snapshot;
