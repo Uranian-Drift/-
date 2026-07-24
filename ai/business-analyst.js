@@ -1,5 +1,5 @@
-import { AI_MODES } from "../config/ai-config.js";
-import { buildBusinessAnalystMessages } from "./prompts-v2.js";
+import { AI_MODES } from "../config/ai-config.js?v=20260722b";
+import { buildBusinessAnalystMessages } from "./prompts-v2.js?v=20260722b";
 
 const list = (value) => Array.isArray(value) ? value : [];
 const text = (value, fallback = "") => String(value ?? fallback).trim();

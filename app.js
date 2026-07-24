@@ -16,7 +16,7 @@ if (window.WATER_HEATER_DATA_READY) {
   const content = document.getElementById("dashboardContent");
 
   if (!DATA) {
-    content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>数据快照未读取</h2><p>请确认 data/water-heater-data.js 与页面位于同一项目中。</p></div></div>';
+    content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>数据快照未读取</h2><p>请确认数据加载文件和分片与页面位于同一项目中。</p></div></div>';
     return;
   }
 
@@ -35,9 +35,12 @@ if (window.WATER_HEATER_DATA_READY) {
     return record;
   });
   const ovi = DATA.ovi.map((row) => zip(DATA.oviFields, row));
+  const targets = (DATA.targets || []).map((row) => zip(DATA.targetFields || [], row));
+  const competitorPrices = (DATA.priceMonitor || []).map((row) => zip(DATA.priceMonitorFields || [], row));
   const PRICE_BANDS = ["2000以下", "2000–2500", "2500–3000", "3000–3500", "3500–4000", "4000以上"];
 
   const TAB_DEFS = [
+    ["overview", "经营总览"],
     ["category", "品类销售"],
     ["channel", "渠道效率"],
     ["store", "店铺效率"],
@@ -59,7 +62,10 @@ if (window.WATER_HEATER_DATA_READY) {
       column: "形态分类",
     },
   };
-  const storeValue = (record) => record.store || "未标注店铺";
+  const storeValue = (record) => {
+    if (String(record.channel || "").trim() === "天猫官旗") return "方太官方旗舰店（天猫）";
+    return record.store || "未标注店铺";
+  };
   const dimValue = (record, key) => {
     if (key === "channel") return record.channel || "未标注";
     if (key === "business") return record.business || "未标注";
@@ -102,7 +108,7 @@ if (window.WATER_HEATER_DATA_READY) {
   const maxDate = DATA.meta.salesDateMax;
   const defaultStart = `${maxDate.slice(0, 7)}-01`;
   const state = {
-    tab: "category",
+    tab: "overview",
     start: defaultStart,
     end: maxDate,
     priceLower: 2000,
@@ -120,12 +126,16 @@ if (window.WATER_HEATER_DATA_READY) {
     modelScope: "core",
     selectedModel: "",
     compareModels: [],
+    priceFocus: {
+      "18M2": "18M2PRO",
+      "16M1": "16M1PRO",
+    },
     selections: Object.fromEntries(Object.entries(FILTERS).map(([key, spec]) => [key, new Set(spec.options)])),
   };
   const aiState = {
     open: false,
     chat: null,
-    mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V46") || "deep"; } catch { return "deep"; } })(),
+    mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V47") || "deep"; } catch { return "deep"; } })(),
     contextOpen: false,
   };
   const chatController = createDeepChatController({
@@ -135,7 +145,10 @@ if (window.WATER_HEATER_DATA_READY) {
   });
 
   const formatInteger = (value) => Math.round(Number(value || 0)).toLocaleString("zh-CN");
-  const formatWan = (value) => `${Math.round(Number(value || 0) / 10000).toLocaleString("zh-CN")}万`;
+  const formatWan = (value) => {
+    const rounded = Math.round(Number(value || 0) / 10000);
+    return `${Object.is(rounded, -0) ? 0 : rounded.toLocaleString("zh-CN")}万`;
+  };
   const formatCurrency = (value) => `¥${Math.round(Number(value || 0)).toLocaleString("zh-CN")}`;
   const formatSignedWan = (value) => {
     if (!Number.isFinite(value)) return "-";
@@ -741,6 +754,1122 @@ if (window.WATER_HEATER_DATA_READY) {
     return `<section class="content-grid price-impact-section">${panel("成交均价影响拆解", "解释整体均价为什么变化，以及谁在拉高或拉低大盘均价", body, "price-impact", { className: "span-2" })}</section>`;
   }
 
+  const OVERVIEW_STORE_COLORS = ["#a71d27", "#d87842", "#b88a35", "#6c819d", "#6f536f", "#4f7a6d", "#8c8f9a"];
+
+  const overviewShapeValue = (row) => {
+    const shape = dimValue(row, "shape");
+    if (shape === "蝶翼" || shape === "平衡机") return shape;
+    return "其他";
+  };
+
+  const overviewRowsForRange = (start, end) => salesForRange(start, end, false, SALES_FILTER_KEYS);
+  const modelText = (row) => `${row.product?.name || ""} ${row.product?.code || ""}`.toUpperCase().replaceAll(" ", "");
+  const is16N1 = (row) => modelText(row).includes("16N1");
+  const is18M2 = (row) => modelText(row).includes("18M2");
+  const is16M1 = (row) => modelText(row).includes("16M1");
+  const is16M1Prior = (row) => {
+    const text = modelText(row);
+    return text.includes("02-MS16T1") || text.includes("MS16T2");
+  };
+  const is18M2Pro = (row) => modelText(row).includes("18M2PRO");
+  const is16M1Pro = (row) => modelText(row).includes("16M1PRO");
+
+  function monthKeysInRange(start, end) {
+    const first = new Date(Date.UTC(Number(start.slice(0, 4)), Number(start.slice(5, 7)) - 1, 1));
+    const last = new Date(Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, 1));
+    const months = [];
+    for (let cursor = first; cursor <= last; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) months.push(toIso(cursor).slice(0, 7));
+    return months;
+  }
+
+  function targetSummaryForPeriod(start, end, shape = "") {
+    const requestedMonths = monthKeysInRange(start, end);
+    const months = new Set(requestedMonths);
+    const availableMonths = new Set(targets.filter((item) => !shape || item.shape === shape).map((item) => item.month));
+    const covered = requestedMonths.length > 0 && requestedMonths.every((month) => availableMonths.has(month));
+    const rows = covered ? targets.filter((item) => months.has(item.month) && (!shape || item.shape === shape)) : [];
+    const amount = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const qty = rows.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+    let expected = 0;
+    let expectedQty = 0;
+    rows.forEach((item) => {
+      const [year, month] = item.month.split("-").map(Number);
+      const monthStart = `${item.month}-01`;
+      const monthEnd = toIso(new Date(Date.UTC(year, month, 0)));
+      const overlapStart = start > monthStart ? start : monthStart;
+      const overlapEnd = end < monthEnd ? end : monthEnd;
+      if (overlapStart > overlapEnd) return;
+      const selectedDays = Math.round((toDate(overlapEnd) - toDate(overlapStart)) / 86400000) + 1;
+      const daysInMonth = Number(monthEnd.slice(8, 10));
+      expected += Number(item.amount || 0) * selectedDays / daysInMonth;
+      expectedQty += Number(item.qty || 0) * selectedDays / daysInMonth;
+    });
+    return { amount, qty, expected, expectedQty, months: uniqueSorted(rows.map((item) => item.month)), covered };
+  }
+
+  const daysInclusive = (start, end) => Math.max(0, Math.round((toDate(end) - toDate(start)) / 86400000) + 1);
+
+  function annualTargetPlan(year, end) {
+    const amount = Number(DATA.targetMeta?.year) === year ? Number(DATA.targetMeta?.annualAmount || 0) : 0;
+    const yearTargets = targets.filter((item) => String(item.month || "").startsWith(`${year}-`));
+    const months = uniqueSorted(yearTargets.map((item) => item.month));
+    const plannedH2 = yearTargets.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const residualBeforePlan = Math.max(0, amount - plannedH2);
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+    let expected = 0;
+
+    if (amount && months.length) {
+      const firstPlanStart = `${months[0]}-01`;
+      if (end < firstPlanStart) {
+        expected = amount * daysInclusive(yearStart, end) / daysInclusive(yearStart, yearEnd);
+      } else {
+        expected = residualBeforePlan;
+        months.forEach((monthKey) => {
+          const monthRows = yearTargets.filter((item) => item.month === monthKey);
+          const monthAmount = monthRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          const [monthYear, month] = monthKey.split("-").map(Number);
+          const monthStart = `${monthKey}-01`;
+          const monthEnd = toIso(new Date(Date.UTC(monthYear, month, 0)));
+          if (end >= monthEnd) expected += monthAmount;
+          else if (end >= monthStart) expected += monthAmount * daysInclusive(monthStart, end) / Number(monthEnd.slice(8, 10));
+        });
+      }
+    }
+
+    return {
+      amount,
+      qty: 0,
+      expected,
+      expectedQty: 0,
+      months: amount ? [`${year}全年`] : [],
+      covered: Boolean(amount),
+      periodStart: yearStart,
+      periodEnd: yearEnd,
+    };
+  }
+
+  function renderMonthlyTargetPlan(year, targetSource) {
+    const yearTargets = targets.filter((item) => String(item.month || "").startsWith(`${year}-`));
+    const months = uniqueSorted(yearTargets.map((item) => item.month));
+    const rows = months.map((monthKey) => {
+      const targetAmount = yearTargets
+        .filter((item) => item.month === monthKey)
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const priorMonth = `${year - 1}-${monthKey.slice(5, 7)}`;
+      const [priorYear, priorMonthNumber] = priorMonth.split("-").map(Number);
+      const priorEnd = toIso(new Date(Date.UTC(priorYear, priorMonthNumber, 0)));
+      const prior = metricSummary(overviewRowsForRange(`${priorMonth}-01`, priorEnd));
+      const growth = ratioChange(targetAmount, prior.amount);
+      return `<tr>
+        <td>${Number(monthKey.slice(5, 7))}月</td>
+        <td>${formatWan(targetAmount)}</td>
+        <td class="${signClass(growth)}">${formatSignedPct(growth)}</td>
+      </tr>`;
+    });
+    const annualAmount = Number(DATA.targetMeta?.annualAmount || 0);
+    const priorAnnual = metricSummary(overviewRowsForRange(`${year - 1}-01-01`, `${year - 1}-12-31`));
+    const annualGrowth = ratioChange(annualAmount, priorAnnual.amount);
+    return `<div class="overview-monthly-target-plan">
+      <div class="overview-monthly-target-head">
+        <span>全年销售目标 <strong>${formatWan(annualAmount)}</strong></span>
+        <span>较${year - 1}年 <strong class="${signClass(annualGrowth)}">${formatSignedPct(annualGrowth)}</strong></span>
+      </div>
+      ${table(["月份", "销售目标", "较同期增幅"], rows, 420)}
+      <p>目标来源：《${escapeHtml(targetSource)}》；分月仅展示销售目标及其较上年同月有效销售的增幅。均价和销售指数不设置数值型目标，经营标准均为高于同期。</p>
+    </div>`;
+  }
+
+  function renderExecutiveProgressCard(label, currentRows, priorRows, target, options = {}) {
+    const current = metricSummary(currentRows);
+    const prior = metricSummary(priorRows);
+    const yoy = ratioChange(current.amount, prior.amount);
+    const completion = target.amount ? current.amount / target.amount : NaN;
+    const expectedCompletion = target.amount ? target.expected / target.amount : NaN;
+    const scheduleGap = target.covered ? current.amount - target.expected : NaN;
+    const remaining = target.covered ? Math.max(0, target.amount - current.amount) : NaN;
+    const daysLeft = target.periodEnd ? Math.max(0, daysInclusive(shiftDays(state.end, 1), target.periodEnd)) : 0;
+    const requiredDaily = Number.isFinite(remaining) && daysLeft > 0 ? remaining / daysLeft : NaN;
+    const actualWidth = Number.isFinite(completion) ? Math.max(0, Math.min(100, completion * 100)) : 0;
+    const expectedWidth = Number.isFinite(expectedCompletion) ? Math.max(0, Math.min(100, expectedCompletion * 100)) : 0;
+    const statusText = !target.covered ? "目标未覆盖" : scheduleGap >= 0 ? "快于计划" : "落后计划";
+    return `<article class="executive-progress-card ${options.featured ? "featured" : ""} ${Number.isFinite(scheduleGap) && scheduleGap < 0 ? "behind" : "on-track"}">
+      <div class="executive-progress-heading"><span>${escapeHtml(label)}</span><small>${target.months.length ? escapeHtml(target.months.join(" / ")) : "无目标"}</small></div>
+      <div class="executive-progress-value"><strong>${formatWan(current.amount)}</strong><span>目标 ${target.amount ? formatWan(target.amount) : "-"}</span></div>
+      <div class="executive-progress-kpis">
+        <span>完成率 <b>${formatRate(completion)}</b></span>
+        <span>同比 <b class="${signClass(yoy)}">${formatSignedPct(yoy)}</b></span>
+        <span>计划状态 <b class="${signClass(scheduleGap)}">${escapeHtml(statusText)}</b></span>
+      </div>
+      <div class="executive-pace-track" aria-label="实际完成率 ${escapeHtml(formatRate(completion))}，计划应达 ${escapeHtml(formatRate(expectedCompletion))}">
+        <i style="width:${actualWidth.toFixed(1)}%"></i><b style="left:${expectedWidth.toFixed(1)}%"></b>
+      </div>
+      <div class="executive-pace-legend"><span>实际 ${formatRate(completion)}</span><span>截至今日计划应达 ${formatRate(expectedCompletion)}</span></div>
+      <div class="executive-progress-footer">
+        <span>计划应达<strong>${target.expected ? formatWan(target.expected) : "-"}</strong></span>
+        <span>计划差额<strong class="${signClass(scheduleGap)}">${formatSignedWan(scheduleGap)}</strong></span>
+        <span>${options.monthly ? `剩余${daysLeft}天需日均` : "年底前需日均"}<strong>${Number.isFinite(requiredDaily) ? formatWan(requiredDaily) : "-"}</strong></span>
+      </div>
+    </article>`;
+  }
+
+  function buildPriceDecisionMetrics(currentRows, priorRows, target, monthStart) {
+    const current = metricSummary(currentRows);
+    const prior = metricSummary(priorRows);
+    const salesCompletion = target.amount ? current.amount / target.amount : NaN;
+    const qtyCompletion = target.qty ? current.qty / target.qty : NaN;
+    const salesPace = target.expected ? current.amount / target.expected - 1 : NaN;
+    const qtyPace = target.expectedQty ? current.qty / target.expectedQty - 1 : NaN;
+    const avgYoy = ratioChange(current.avgPrice, prior.avgPrice);
+    const indexYoy = ratioChange(current.salesIndex, prior.salesIndex);
+    const [year, month] = state.end.slice(0, 7).split("-").map(Number);
+    const monthEnd = toIso(new Date(Date.UTC(year, month, 0)));
+    const remainingDays = Math.max(0, daysInclusive(shiftDays(state.end, 1), monthEnd));
+    const elapsedDays = Math.max(1, daysInclusive(monthStart, state.end));
+    const remainingAmount = Math.max(0, target.amount - current.amount);
+    const requiredQtyAtCurrentPrice = current.avgPrice > 0 ? remainingAmount / current.avgPrice : NaN;
+    const currentDailyQty = current.qty / elapsedDays;
+    const requiredDailyQty = remainingDays > 0 ? requiredQtyAtCurrentPrice / remainingDays : NaN;
+    const requiredQtyMultiple = currentDailyQty > 0 ? requiredDailyQty / currentDailyQty : NaN;
+    let actionTitle = "保持当前价格节奏";
+    let actionText = "销售节奏接近计划，优先保持价格与结构稳定。";
+    let actionClass = "steady";
+    if (Number.isFinite(salesPace) && salesPace < -0.03) {
+      if (Number.isFinite(qtyPace) && qtyPace < -0.05 && Number.isFinite(avgYoy) && avgYoy > 0.03) {
+        actionTitle = "仅做定向试价";
+        actionText = "台量落后但均价已高于同期，可针对重点型号和店铺小范围试价，不建议全盘调整。";
+        actionClass = "watch";
+      } else if (Number.isFinite(qtyPace) && qtyPace < -0.05 && Number.isFinite(avgYoy) && avgYoy <= 0) {
+        actionTitle = "不建议全盘继续降价";
+        actionText = "台量落后且大盘均价未高于同期；应优先补流量、重点店铺覆盖和转化。";
+        actionClass = "protect";
+      } else {
+        actionTitle = "优先恢复均价与高端结构";
+        actionText = "台量相对销售额表现更好，或均价尚未高于同期，当前缺口更偏向价格和结构。";
+        actionClass = "protect";
+      }
+    }
+    return {
+      current, prior, salesCompletion, qtyCompletion, salesPace, qtyPace, avgYoy, indexYoy,
+      remainingDays, remainingAmount, requiredQtyAtCurrentPrice, currentDailyQty, requiredDailyQty,
+      requiredQtyMultiple, expectedAmount: target.expected, targetAmount: target.amount, targetQty: target.qty,
+      actionTitle, actionText, actionClass,
+    };
+  }
+
+  function renderPriceDecision(metrics) {
+    const avgYoy = ratioChange(metrics.current.avgPrice, metrics.prior.avgPrice);
+    return `<section class="overview-price-decision ${metrics.actionClass}">
+      <div class="overview-decision-copy">
+        <p class="eyebrow">Price &amp; Volume Decision</p>
+        <div class="overview-decision-title"><h3>价量决策</h3><span>${escapeHtml(metrics.actionTitle)}</span></div>
+        <p>${escapeHtml(metrics.actionText)}${Number.isFinite(metrics.requiredQtyMultiple) ? ` 按当前均价，剩余${metrics.remainingDays}天需再销售约${formatInteger(metrics.requiredQtyAtCurrentPrice)}台，日销量需达到当前的${metrics.requiredQtyMultiple.toFixed(1)}倍。` : ""}</p>
+      </div>
+      <div class="overview-decision-metrics">
+        <div><span>销额完成率</span><strong>${formatRate(metrics.salesCompletion)}</strong><small>计划节奏 ${formatSignedPct(metrics.salesPace)}</small></div>
+        <div><span>台量完成率</span><strong>${formatRate(metrics.qtyCompletion)}</strong><small>计划节奏 ${formatSignedPct(metrics.qtyPace)}</small></div>
+        <div><span>当前均价</span><strong>${formatCurrency(metrics.current.avgPrice)}</strong><small>同比 ${formatSignedPct(avgYoy)}</small></div>
+        <div><span>均价与指数标准</span><strong>高于同期</strong><small>不设置数值型目标</small></div>
+      </div>
+    </section>`;
+  }
+
+  function topStoreNames(currentRows, limit = 6) {
+    return [...groupRows(currentRows, storeValue).entries()]
+      .map(([name, rows]) => ({ name, amount: metricSummary(rows).amount }))
+      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, "zh-CN"))
+      .slice(0, limit)
+      .map((item) => item.name);
+  }
+
+  function renderOverviewStoreTable(currentRows, priorRows) {
+    const leadingStores = topStoreNames(currentRows);
+    const leadingSet = new Set(leadingStores);
+    const storeBucket = (row) => leadingSet.has(storeValue(row)) ? storeValue(row) : "其他店铺";
+    const currentMap = groupRows(currentRows, storeBucket);
+    const priorMap = groupRows(priorRows, storeBucket);
+    const order = [...leadingStores];
+    if ((currentMap.get("其他店铺") || []).length || (priorMap.get("其他店铺") || []).length) order.push("其他店铺");
+    const rows = order.map((name) => {
+      const grouped = currentMap.get(name) || [];
+      const priorGrouped = priorMap.get(name) || [];
+      const current = metricSummary(grouped);
+      const prior = metricSummary(priorGrouped);
+      const yoy = ratioChange(current.amount, prior.amount);
+      const shapeMetric = (shape) => {
+        const shapeCurrent = metricSummary(grouped.filter((row) => overviewShapeValue(row) === shape));
+        const shapePrior = metricSummary(priorGrouped.filter((row) => overviewShapeValue(row) === shape));
+        return {
+          current: shapeCurrent,
+          prior: shapePrior,
+          yoy: ratioChange(shapeCurrent.amount, shapePrior.amount),
+          delta: shapeCurrent.amount - shapePrior.amount,
+        };
+      };
+      const butterfly = shapeMetric("蝶翼");
+      const balance = shapeMetric("平衡机");
+      const other = shapeMetric("其他");
+      const growthPull = Math.max(0, butterfly.delta) + Math.max(0, balance.delta);
+      const otherDecline = Math.max(0, -other.delta);
+      const coverage = otherDecline > 0 ? growthPull / otherDecline : NaN;
+      let conclusion = "保持当前经营节奏";
+      let health = "steady";
+      if (otherDecline > 0 && coverage >= 1) {
+        conclusion = yoy >= 0 ? "增长结构健康" : "新品已覆盖下滑";
+        health = "good";
+      } else if (otherDecline > 0 && coverage >= 0.7) {
+        conclusion = "接近覆盖，继续补蝶翼";
+        health = "watch";
+      } else if (otherDecline > 0) {
+        conclusion = "增长补位不足";
+        health = "risk";
+      } else if (yoy < 0) {
+        conclusion = "整体经营仍需修复";
+        health = "risk";
+      } else {
+        conclusion = "无需覆盖其他下滑";
+        health = "good";
+      }
+      const metricCell = (item) => `<strong>${formatWan(item.current.amount)}</strong><small class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</small>`;
+      return `<tr class="${name === "其他店铺" ? "overview-muted-row" : ""}">
+        <td title="${escapeHtml(name)}">${escapeHtml(overviewStoreAlias(name))}</td>
+        <td class="overview-channel-metric"><strong>${formatWan(current.amount)}</strong><small class="${signClass(yoy)}">${formatSignedPct(yoy)}</small></td>
+        <td class="overview-channel-metric">${metricCell(butterfly)}</td>
+        <td class="overview-channel-metric">${metricCell(balance)}</td>
+        <td class="overview-channel-metric">${metricCell(other)}</td>
+        <td><span class="overview-channel-conclusion ${health}">${escapeHtml(conclusion)}</span></td>
+      </tr>`;
+    });
+    return `${table(["销售前6店铺＋其他", "有效销售 / 同比", "蝶翼 / 同比", "平衡机 / 同比", "其他产品 / 同比", "经营状态"], rows, 620)}
+      <p class="overview-channel-note">店铺按当前汇报周期有效销售额取前6，其余合并为“其他店铺”；同期严格沿用同一批店铺。经营状态综合整体同比，以及蝶翼、平衡机对其他产品下滑的补位情况判断。</p>`;
+  }
+
+  function buildOverviewShapeStats(currentRows, priorRows, monthStart) {
+    return ["蝶翼", "平衡机", "其他"].map((name) => {
+      const current = metricSummary(currentRows.filter((row) => overviewShapeValue(row) === name));
+      const prior = metricSummary(priorRows.filter((row) => overviewShapeValue(row) === name));
+      const target = targetSummaryForPeriod(monthStart, state.end, name);
+      return {
+        name,
+        current,
+        prior,
+        target,
+        delta: current.amount - prior.amount,
+        yoy: ratioChange(current.amount, prior.amount),
+        completion: target.amount ? current.amount / target.amount : NaN,
+        targetGap: target.covered ? current.amount - target.amount : NaN,
+        priceToPrior: ratioChange(current.avgPrice, prior.avgPrice),
+        indexToPrior: ratioChange(current.salesIndex, prior.salesIndex),
+      };
+    });
+  }
+
+  function renderShapeBridge(items) {
+    const totalCurrent = items.reduce((sum, item) => sum + item.current.amount, 0);
+    const totalPrior = items.reduce((sum, item) => sum + item.prior.amount, 0);
+    const netDelta = totalCurrent - totalPrior;
+    const butterfly = items.find((item) => item.name === "蝶翼");
+    const balance = items.find((item) => item.name === "平衡机");
+    const other = items.find((item) => item.name === "其他");
+    const growthPull = Math.max(0, butterfly?.delta || 0) + Math.max(0, balance?.delta || 0);
+    const otherDecline = Math.max(0, -(other?.delta || 0));
+    const coverage = otherDecline > 0 ? growthPull / otherDecline : NaN;
+    const coverageText = otherDecline > 0 ? formatRate(coverage) : "无需覆盖";
+    const coverageStatus = otherDecline === 0 ? "good" : coverage >= 1 ? "good" : coverage >= 0.7 ? "watch" : "risk";
+    const term = (item, hint) => `<article class="overview-equation-term ${signClass(item?.delta)}">
+      <span>${escapeHtml(item?.name || "-")}</span>
+      <strong>${formatSignedWan(item?.delta)}</strong>
+      <small>${escapeHtml(hint)} · 本月${formatWan(item?.current?.amount || 0)} · 目标${formatRate(item?.completion)}</small>
+    </article>`;
+    return `<section class="overview-shape-bridge">
+      <div class="overview-section-heading">
+        <div><p class="eyebrow">Growth Replacement Bridge</p><h3>当月形态增长补位</h3><p>直接看蝶翼与平衡机的增量，能否抵消其他产品下滑。</p></div>
+        <div class="overview-bridge-result ${coverageStatus}"><span>增长覆盖率</span><strong>${escapeHtml(coverageText)}</strong><small>整体同比增减 ${formatSignedWan(netDelta)}</small></div>
+      </div>
+      <div class="overview-shape-equation">
+        ${term(butterfly, "第一增长盘")}
+        <b aria-hidden="true">＋</b>
+        ${term(balance, "第二增长盘")}
+        <b aria-hidden="true">＋</b>
+        ${term(other, "收缩盘")}
+        <b aria-hidden="true">＝</b>
+        <article class="overview-equation-total ${signClass(netDelta)}"><span>整体净增减</span><strong>${formatSignedWan(netDelta)}</strong><small>蝶翼与平衡机共拉动 ${formatSignedWan(growthPull)}</small></article>
+      </div>
+    </section>`;
+  }
+
+  function renderOverviewConclusion(priceMetrics, shapeItems) {
+    const scheduleGap = Number.isFinite(priceMetrics.expectedAmount) ? priceMetrics.current.amount - priceMetrics.expectedAmount : NaN;
+    const butterfly = shapeItems.find((item) => item.name === "蝶翼");
+    const balance = shapeItems.find((item) => item.name === "平衡机");
+    const other = shapeItems.find((item) => item.name === "其他");
+    const growthPull = Math.max(0, butterfly?.delta || 0) + Math.max(0, balance?.delta || 0);
+    const otherDecline = Math.max(0, -(other?.delta || 0));
+    const coverage = otherDecline > 0 ? growthPull / otherDecline : NaN;
+    const coverageLabel = otherDecline === 0
+      ? "无需覆盖"
+      : coverage >= 1
+        ? `已覆盖 ${formatRate(coverage)}`
+        : coverage >= 0.7
+          ? `接近覆盖 ${formatRate(coverage)}`
+          : `仅覆盖 ${formatRate(coverage)}`;
+    const focus = [...shapeItems].filter((item) => Number.isFinite(item.targetGap)).sort((a, b) => a.targetGap - b.targetGap)[0];
+    const headline = Number.isFinite(scheduleGap) && scheduleGap < 0
+      ? `当月较计划节奏少${formatWan(Math.abs(scheduleGap))}，${priceMetrics.actionTitle}`
+      : `当月销售达到计划节奏，${priceMetrics.actionTitle}`;
+    const summary = `距月目标还差${formatWan(priceMetrics.remainingAmount)}，剩余${priceMetrics.remainingDays}天；${Number.isFinite(priceMetrics.requiredQtyMultiple) ? `按当前均价测算，日销量需达到当前的${priceMetrics.requiredQtyMultiple.toFixed(1)}倍。` : "请继续保持当前经营节奏。"}`;
+    const balanceAdvice = Number.isFinite(balance?.priceToPrior) && balance.priceToPrior <= 0
+      ? "平衡机均价未高于同期，应优先恢复价格和高端结构。"
+      : "平衡机继续扩大重点店铺覆盖，同时保持价格稳定。";
+    return `<section class="overview-command-summary">
+      <div class="overview-command-head">
+        <div><p class="eyebrow">Management Conclusion</p><h2>${escapeHtml(headline)}</h2><p>${escapeHtml(summary)}</p></div>
+        <span class="overview-command-status ${priceMetrics.actionClass}">${escapeHtml(priceMetrics.actionTitle)}</span>
+      </div>
+      <div class="overview-command-actions">
+        <article><span>当月销额</span><strong>${formatWan(priceMetrics.current.amount)} / ${formatWan(priceMetrics.targetAmount)}</strong><small>完成率 ${formatRate(priceMetrics.salesCompletion)} · 较计划节奏 ${formatSignedPct(priceMetrics.salesPace)}</small></article>
+        <article><span>当月台量</span><strong>${formatInteger(priceMetrics.current.qty)} / ${formatInteger(priceMetrics.targetQty)}台</strong><small>完成率 ${formatRate(priceMetrics.qtyCompletion)} · 较计划节奏 ${formatSignedPct(priceMetrics.qtyPace)}</small></article>
+        <article><span>当前均价</span><strong>${formatCurrency(priceMetrics.current.avgPrice)}</strong><small>同期 ${formatCurrency(priceMetrics.prior.avgPrice)} · 目标：高于同期</small></article>
+        <article><span>结构补位</span><strong>${escapeHtml(coverageLabel)}</strong><small>蝶翼与平衡机拉动 ${formatSignedWan(growthPull)}，其他减少 ${formatWan(otherDecline)}</small></article>
+      </div>
+      <p class="overview-command-focus"><b>首要任务：</b>${focus ? `${escapeHtml(focus.name)}补量，距月目标还差 ${formatWan(Math.max(0, -focus.targetGap))}` : "保持当前节奏"}；${escapeHtml(balanceAdvice)}</p>
+    </section>`;
+  }
+
+  function isoDateRange(start, end) {
+    const dates = [];
+    for (let day = start; day <= end; day = shiftDays(day, 1)) dates.push(day);
+    return dates;
+  }
+
+  const overviewStoreAlias = (name) => {
+    const value = String(name || "").trim();
+    if (value === "方太官方旗舰店（天猫）") return "天猫官旗";
+    if (value.includes("方太自营二店")) return "京东热水器自营";
+    if (value.includes("北京京东世纪贸易有限公司")) return "京东自营";
+    if (value.includes("七叶枫") && value.includes("天猫")) return "天猫热旗·七叶枫";
+    if (value.includes("河南信维")) return "京代POP·河南信维";
+    if (value.length > 14) return `${value.slice(0, 13)}…`;
+    return value;
+  };
+
+  const n1StoreBucket = (row) => {
+    const name = String(storeValue(row) || "").trim();
+    const channel = String(row.channel || "").trim();
+    if (channel === "天猫官旗" || name === "方太官方旗舰店（天猫）" || name === "天猫官旗") return "天猫官旗";
+    if (name.includes("方太自营二店") || name.includes("京东热水器自营")) return "京东热水器自营";
+    if (name.includes("北京京东世纪贸易有限公司") || name === "京东自营") return "京东自营";
+    return "其他";
+  };
+
+  function modelTargetPlan(model, dates) {
+    const normalized = String(model || "").trim().toUpperCase();
+    const rows = targets.filter((item) => String(item.model || "").trim().toUpperCase() === normalized);
+    const monthMap = new Map();
+    const monthQtyMap = new Map();
+    rows.forEach((item) => {
+      monthMap.set(item.month, (monthMap.get(item.month) || 0) + Number(item.amount || 0));
+      monthQtyMap.set(item.month, (monthQtyMap.get(item.month) || 0) + Number(item.qty || 0));
+    });
+    const dailyTargets = dates.map((date) => {
+      const [year, month] = date.slice(0, 7).split("-").map(Number);
+      const monthAmount = monthMap.get(date.slice(0, 7)) || 0;
+      const daysInMonth = Number(toIso(new Date(Date.UTC(year, month, 0))).slice(8, 10));
+      return monthAmount / daysInMonth;
+    });
+    const dailyQtyTargets = dates.map((date) => {
+      const [year, month] = date.slice(0, 7).split("-").map(Number);
+      const monthQty = monthQtyMap.get(date.slice(0, 7)) || 0;
+      const daysInMonth = Number(toIso(new Date(Date.UTC(year, month, 0))).slice(8, 10));
+      return monthQty / daysInMonth;
+    });
+    const coveredMonths = uniqueSorted(dates.map((date) => date.slice(0, 7)).filter((month) => monthMap.has(month)));
+    const fullTarget = coveredMonths.reduce((sum, month) => sum + Number(monthMap.get(month) || 0), 0);
+    const fullQtyTarget = coveredMonths.reduce((sum, month) => sum + Number(monthQtyMap.get(month) || 0), 0);
+    const planToDate = dailyTargets.reduce((sum, value) => sum + value, 0);
+    const planQtyToDate = dailyQtyTargets.reduce((sum, value) => sum + value, 0);
+    const lastCoveredMonth = coveredMonths.at(-1);
+    const targetPeriodEnd = lastCoveredMonth
+      ? toIso(new Date(Date.UTC(Number(lastCoveredMonth.slice(0, 4)), Number(lastCoveredMonth.slice(5, 7)), 0)))
+      : "";
+    return {
+      dailyTargets,
+      dailyQtyTargets,
+      fullTarget,
+      fullQtyTarget,
+      planToDate,
+      planQtyToDate,
+      coveredMonths,
+      targetPeriodEnd,
+    };
+  }
+
+  function runningTotal(values) {
+    let total = 0;
+    return values.map((value) => {
+      total += Number(value || 0);
+      return total;
+    });
+  }
+
+  function render16N1CumulativeChart(dates, actualDaily, targetDaily) {
+    const actualCumulative = runningTotal(actualDaily);
+    const targetCumulative = runningTotal(targetDaily);
+    const max = Math.max(1, ...actualCumulative, ...targetCumulative);
+    const width = 1080;
+    const height = 300;
+    const pad = { left: 66, right: 28, top: 22, bottom: 42 };
+    const x = (index) => pad.left + (dates.length === 1 ? 0 : index / (dates.length - 1)) * (width - pad.left - pad.right);
+    const y = (value) => pad.top + (max - value) / max * (height - pad.top - pad.bottom);
+    const linePath = (values) => values.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+    const areaPath = actualCumulative.length
+      ? `${linePath(actualCumulative)} L${x(actualCumulative.length - 1).toFixed(1)},${(height - pad.bottom).toFixed(1)} L${x(0).toFixed(1)},${(height - pad.bottom).toFixed(1)} Z`
+      : "";
+    const ticks = [0, 1, 2, 3, 4].map((index) => {
+      const value = max * (4 - index) / 4;
+      const ypos = y(value);
+      return `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${ypos.toFixed(1)}" y2="${ypos.toFixed(1)}" class="overview-chart-grid"/><text x="${pad.left - 10}" y="${(ypos + 4).toFixed(1)}" text-anchor="end">${escapeHtml(formatWan(value))}</text></g>`;
+    }).join("");
+    const labelIndexes = [...new Set([0, Math.floor((dates.length - 1) / 4), Math.floor((dates.length - 1) / 2), Math.floor((dates.length - 1) * 3 / 4), dates.length - 1])].sort((a, b) => a - b);
+    const xLabels = labelIndexes.map((index) => `<text x="${x(index).toFixed(1)}" y="${height - 13}" text-anchor="middle">${escapeHtml(dates[index].slice(5))}</text>`).join("");
+    const actualDots = dates.length <= 31
+      ? actualCumulative.map((value, index) => `<circle cx="${x(index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="3.2" class="n1-actual-dot"><title>${escapeHtml(`${dates[index]} 累计有效销售 ${formatWan(value)}`)}</title></circle>`).join("")
+      : "";
+    const targetDots = dates.length <= 31
+      ? targetCumulative.map((value, index) => `<circle cx="${x(index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="2.4" class="n1-target-dot"><title>${escapeHtml(`${dates[index]} 计划应达 ${formatWan(value)}`)}</title></circle>`).join("")
+      : "";
+    return `<div class="n1-chart-card">
+      <div class="n1-chart-title"><div><strong>累计有效销售 vs 计划节奏</strong><span>实际线高于计划线表示进度领先</span></div><div class="n1-inline-legend"><span class="actual">累计实际</span><span class="target">计划应达</span></div></div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="16N1累计有效销售与计划节奏对比">${ticks}${xLabels}<path d="${areaPath}" class="n1-actual-area"/><path d="${linePath(targetCumulative)}" class="n1-target-line"/><path d="${linePath(actualCumulative)}" class="n1-actual-line"/>${targetDots}${actualDots}</svg>
+    </div>`;
+  }
+
+  function render16N1DailyStack(dates, storeItems) {
+    const series = storeItems.map((item, index) => {
+      const dailyMap = groupRows(item.rows, (row) => row.date);
+      return {
+        ...item,
+        color: OVERVIEW_STORE_COLORS[index % OVERVIEW_STORE_COLORS.length],
+        values: dates.map((day) => metricSummary(dailyMap.get(day) || []).qty),
+      };
+    });
+    const totals = dates.map((_, index) => series.reduce((sum, item) => sum + Number(item.values[index] || 0), 0));
+    const movingAverage = totals.map((_, index) => {
+      const slice = totals.slice(Math.max(0, index - 6), index + 1);
+      return slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+    });
+    const positiveStacks = dates.map((_, dateIndex) => series.reduce((sum, item) => sum + Math.max(0, Number(item.values[dateIndex] || 0)), 0));
+    const negativeStacks = dates.map((_, dateIndex) => series.reduce((sum, item) => sum + Math.min(0, Number(item.values[dateIndex] || 0)), 0));
+    const max = Math.max(1, ...positiveStacks, ...movingAverage);
+    const min = Math.min(0, ...negativeStacks, ...movingAverage);
+    const range = max - min || 1;
+    const width = 1080;
+    const height = 330;
+    const pad = { left: 66, right: 28, top: 22, bottom: 46 };
+    const plotWidth = width - pad.left - pad.right;
+    const x = (index) => pad.left + (index + 0.5) / dates.length * plotWidth;
+    const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+    const zeroY = y(0);
+    const barWidth = Math.max(4, Math.min(24, plotWidth / Math.max(1, dates.length) * 0.66));
+    const ticks = [0, 1, 2, 3, 4].map((index) => {
+      const value = max - range * index / 4;
+      const ypos = y(value);
+      return `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${ypos.toFixed(1)}" y2="${ypos.toFixed(1)}" class="overview-chart-grid"/><text x="${pad.left - 10}" y="${(ypos + 4).toFixed(1)}" text-anchor="end">${escapeHtml(`${formatInteger(value)}台`)}</text></g>`;
+    }).join("");
+    const bars = dates.map((date, dateIndex) => {
+      let positive = 0;
+      let negative = 0;
+      return series.map((item) => {
+        const value = Number(item.values[dateIndex] || 0);
+        const start = value >= 0 ? positive : negative;
+        const end = start + value;
+        if (value >= 0) positive = end;
+        else negative = end;
+        const top = Math.min(y(start), y(end));
+        const rectHeight = Math.max(0.8, Math.abs(y(start) - y(end)));
+        return `<rect x="${(x(dateIndex) - barWidth / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${rectHeight.toFixed(1)}" rx="2" fill="${item.color}"><title>${escapeHtml(`${date} ${item.name} ${formatInteger(value)}台`)}</title></rect>`;
+      }).join("");
+    }).join("");
+    const averagePoints = movingAverage.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+    const labelIndexes = [...new Set([0, Math.floor((dates.length - 1) / 4), Math.floor((dates.length - 1) / 2), Math.floor((dates.length - 1) * 3 / 4), dates.length - 1])].sort((a, b) => a - b);
+    const xLabels = labelIndexes.map((index) => `<text x="${x(index).toFixed(1)}" y="${height - 13}" text-anchor="middle">${escapeHtml(dates[index].slice(5))}</text>`).join("");
+    const legend = series.map((item) => `<span><i style="background:${item.color}"></i>${escapeHtml(overviewStoreAlias(item.name))}</span>`).join("");
+    return `<div class="n1-chart-card">
+      <div class="n1-chart-title"><div><strong>分日有效台量与店铺贡献</strong><span>台量为销售数量净值，负数代表退货冲减；折线为7日移动平均</span></div><div class="n1-store-legend">${legend}<span class="moving"><i></i>7日台量均线</span></div></div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="16N1分日有效台量、店铺贡献与7日移动平均">${ticks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}" class="n1-zero-line"/>${xLabels}${bars}<polyline points="${averagePoints}" class="n1-moving-line"/></svg>
+    </div>`;
+  }
+
+  function render16N1WarRoom(currentRows) {
+    const dates = isoDateRange(state.start, state.end);
+    const dailyMap = groupRows(currentRows, (row) => row.date);
+    const actualDaily = dates.map((day) => metricSummary(dailyMap.get(day) || []).amount);
+    if (!dates.length || actualDaily.every((value) => value === 0)) {
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>当前周期无16N1销售</h2><p>调整时间范围后再查看。</p></div></div>';
+    }
+    const targetPlan = modelTargetPlan("16N1", dates);
+    const current = metricSummary(currentRows);
+    const paceRate = targetPlan.planToDate ? current.amount / targetPlan.planToDate : NaN;
+    const paceGap = targetPlan.planToDate ? current.amount - targetPlan.planToDate : NaN;
+    const qtyPaceRate = targetPlan.planQtyToDate ? current.qty / targetPlan.planQtyToDate : NaN;
+    const qtyPaceGap = targetPlan.planQtyToDate ? current.qty - targetPlan.planQtyToDate : NaN;
+    const recentStart = shiftDays(state.end, -6);
+    const previousEnd = shiftDays(recentStart, -1);
+    const previousStart = shiftDays(previousEnd, -6);
+    const comparisonRows = overviewRowsForRange(previousStart, state.end).filter(is16N1);
+    const recentRows = comparisonRows.filter((row) => row.date >= recentStart && row.date <= state.end);
+    const previousRows = comparisonRows.filter((row) => row.date >= previousStart && row.date <= previousEnd);
+    const recent = metricSummary(recentRows);
+    const previous = metricSummary(previousRows);
+    const recentQtyChange = ratioChange(recent.qty, previous.qty);
+    const averageDailyQty = current.qty / Math.max(1, dates.length);
+    const remainingDays = targetPlan.targetPeriodEnd && targetPlan.targetPeriodEnd > state.end
+      ? daysInclusive(shiftDays(state.end, 1), targetPlan.targetPeriodEnd)
+      : 0;
+    const remainingQty = targetPlan.fullQtyTarget ? Math.max(0, targetPlan.fullQtyTarget - current.qty) : NaN;
+    const requiredDailyQty = remainingDays > 0 ? remainingQty / remainingDays : NaN;
+    const actionClass = !Number.isFinite(paceRate) ? "neutral" : paceRate >= 1 ? "good" : paceRate >= 0.9 ? "watch" : "risk";
+    const qtyActionClass = !Number.isFinite(qtyPaceRate) ? "neutral" : qtyPaceRate >= 1 ? "good" : qtyPaceRate >= 0.9 ? "watch" : "risk";
+    const actionText = !Number.isFinite(paceRate)
+      ? "当前周期没有匹配的16N1目标"
+      : paceRate >= 1
+        ? `领先计划 ${formatRate(paceRate - 1)}`
+        : paceRate >= 0.9
+          ? `接近计划，缺口 ${formatWan(Math.abs(paceGap))}`
+          : `进度落后，缺口 ${formatWan(Math.abs(paceGap))}`;
+    const targetScopeLabel = targetPlan.coveredMonths.length === 1 ? "当月目标" : "所选月份目标";
+
+    const currentStoreMap = groupRows(currentRows, n1StoreBucket);
+    const recentStoreMap = groupRows(recentRows, n1StoreBucket);
+    const previousStoreMap = groupRows(previousRows, n1StoreBucket);
+    const storeOrder = ["天猫官旗", "京东自营", "京东热水器自营", "其他"];
+    const storeItems = storeOrder.map((name) => {
+      const rows = currentStoreMap.get(name) || [];
+      const storeCurrent = metricSummary(rows);
+      const storeRecent = metricSummary(recentStoreMap.get(name) || []);
+      const storePrevious = metricSummary(previousStoreMap.get(name) || []);
+      return {
+        name,
+        rows,
+        current: storeCurrent,
+        recent: storeRecent,
+        previous: storePrevious,
+        change: ratioChange(storeRecent.amount, storePrevious.amount),
+        qtyChange: ratioChange(storeRecent.qty, storePrevious.qty),
+      };
+    });
+    const storeRows = storeItems.map((item) => `<tr class="${item.name === "其他" ? "overview-muted-row" : ""}">
+      <td title="${escapeHtml(item.name)}">${escapeHtml(overviewStoreAlias(item.name))}</td>
+      <td>${formatWan(item.current.amount)}</td>
+      <td>${formatInteger(item.current.qty)}台</td>
+      <td>${formatRate(current.amount ? item.current.amount / current.amount : NaN)}</td>
+      <td>${formatInteger(item.recent.qty)}台</td>
+      <td>${formatInteger(item.previous.qty)}台</td>
+      <td class="${signClass(item.qtyChange)}">${formatSignedPct(item.qtyChange)}</td>
+    </tr>`);
+    const kpis = `<div class="n1-kpi-grid">
+      <article class="${actionClass}"><span>16N1销额进度</span><strong>${formatWan(current.amount)} / ${targetPlan.fullTarget ? formatWan(targetPlan.fullTarget) : "-"}</strong><small>计划节奏 ${formatRate(paceRate)} · ${escapeHtml(actionText)}</small></article>
+      <article class="${qtyActionClass}"><span>16N1台量进度</span><strong>${formatInteger(current.qty)} / ${targetPlan.fullQtyTarget ? `${formatInteger(targetPlan.fullQtyTarget)}台` : "-"}</strong><small>计划节奏 ${formatRate(qtyPaceRate)}${Number.isFinite(qtyPaceGap) ? ` · ${qtyPaceGap >= 0 ? "领先" : "落后"}${formatInteger(Math.abs(qtyPaceGap))}台` : ""}</small></article>
+      <article><span>近7日台量动能</span><strong class="${signClass(recentQtyChange)}">${formatSignedPct(recentQtyChange)}</strong><small>${formatInteger(recent.qty)}台 vs 前7日 ${formatInteger(previous.qty)}台</small></article>
+      <article class="${Number.isFinite(requiredDailyQty) && requiredDailyQty > averageDailyQty ? "risk" : "good"}"><span>剩余日均台量</span><strong>${Number.isFinite(requiredDailyQty) ? `${formatInteger(requiredDailyQty)}台` : "-"}</strong><small>${remainingDays ? `当前日均${formatInteger(averageDailyQty)}台，尚差${formatInteger(remainingQty)}台` : "当前目标周期已结束"}</small></article>
+    </div>`;
+    const charts = `<div class="n1-chart-grid">
+      ${render16N1CumulativeChart(dates, actualDaily, targetPlan.dailyTargets)}
+      ${render16N1DailyStack(dates, storeItems)}
+    </div>`;
+    const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看16N1店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>固定展示天猫官旗、京东自营、京东热水器自营及其他；台量为销售数量净值</span></div><b class="${actionClass}">${escapeHtml(actionText)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
+    return `<div class="n1-war-room">${kpis}${charts}${storeTable}</div>`;
+  }
+
+  function compactStoreRanking(currentRows, priorRows, limit = 6) {
+    const currentMap = groupRows(currentRows, storeValue);
+    const priorMap = groupRows(priorRows, storeValue);
+    const keys = new Set(currentMap.keys());
+    const items = [...keys].map((name) => {
+      const rows = currentMap.get(name) || [];
+      const priorGrouped = priorMap.get(name) || [];
+      const current = metricSummary(rows);
+      const prior = metricSummary(priorGrouped);
+      return {
+        name,
+        rows,
+        priorRows: priorGrouped,
+        current,
+        prior,
+        yoy: ratioChange(current.amount, prior.amount),
+        qtyYoy: ratioChange(current.qty, prior.qty),
+      };
+    }).sort((a, b) => b.current.amount - a.current.amount || b.prior.amount - a.prior.amount);
+    const kept = items.slice(0, limit);
+    const keptNames = new Set(kept.map((item) => item.name));
+    const otherCurrentRows = items.slice(limit).flatMap((item) => item.rows);
+    const otherPriorRows = [...priorMap.entries()]
+      .filter(([name]) => !keptNames.has(name))
+      .flatMap(([, rows]) => rows);
+    if (otherCurrentRows.length || otherPriorRows.length) {
+      const current = metricSummary(otherCurrentRows);
+      const prior = metricSummary(otherPriorRows);
+      kept.push({
+        name: "其他店铺",
+        rows: otherCurrentRows,
+        priorRows: otherPriorRows,
+        current,
+        prior,
+        yoy: ratioChange(current.amount, prior.amount),
+        qtyYoy: ratioChange(current.qty, prior.qty),
+      });
+    }
+    return kept;
+  }
+
+  function renderSeriesStoreTable(currentRows, priorRows, currentPredicate, priorPredicate = currentPredicate) {
+    const scopedCurrent = currentRows.filter(currentPredicate);
+    const scopedPrior = priorRows.filter(priorPredicate);
+    const currentTotal = metricSummary(scopedCurrent);
+    const priorTotal = metricSummary(scopedPrior);
+    const totalAmountYoy = ratioChange(currentTotal.amount, priorTotal.amount);
+    const totalQtyYoy = ratioChange(currentTotal.qty, priorTotal.qty);
+    const periodMetric = (summary) => `<strong>${formatWan(summary.amount)}</strong><small>${formatInteger(summary.qty)}台</small>`;
+    const rows = [
+      `<tr class="overview-total-row"><td>合计</td><td class="overview-series-store-metric">${periodMetric(currentTotal)}</td><td class="overview-series-store-metric">${periodMetric(priorTotal)}</td><td class="${signClass(totalAmountYoy)}">${formatSignedPct(totalAmountYoy)}</td><td class="${signClass(totalQtyYoy)}">${formatSignedPct(totalQtyYoy)}</td></tr>`,
+      ...compactStoreRanking(scopedCurrent, scopedPrior).map((item) => `<tr><td>${escapeHtml(item.name)}</td><td class="overview-series-store-metric">${periodMetric(item.current)}</td><td class="overview-series-store-metric">${periodMetric(item.prior)}</td><td class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</td><td class="${signClass(item.qtyYoy)}">${formatSignedPct(item.qtyYoy)}</td></tr>`),
+    ];
+    return table(["店铺", "本期销售 / 台量", "同期销售 / 台量", "销售同比", "台量同比"], rows, 520);
+  }
+
+  function renderSeriesExecutiveSummary(currentRows, priorRows, currentPredicate, priorPredicate, label, modelScope) {
+    const scopedCurrent = currentRows.filter(currentPredicate);
+    const scopedPrior = priorRows.filter(priorPredicate);
+    const current = metricSummary(scopedCurrent);
+    const prior = metricSummary(scopedPrior);
+    const yoy = ratioChange(current.amount, prior.amount);
+    const qtyYoy = ratioChange(current.qty, prior.qty);
+    const stores = compactStoreRanking(scopedCurrent, scopedPrior, 3);
+    const maxAmount = Math.max(1, ...stores.map((item) => item.current.amount));
+    const storeList = stores.map((item) => `<li>
+      <div><span title="${escapeHtml(item.name)}">${escapeHtml(overviewStoreAlias(item.name))}</span><strong>${formatWan(item.current.amount)} · ${formatInteger(item.current.qty)}台</strong><small class="${signClass(item.yoy)}">${formatSignedPct(item.yoy)}</small></div>
+      <i><b style="width:${Math.max(4, item.current.amount / maxAmount * 100).toFixed(1)}%"></b></i>
+    </li>`).join("");
+    const lead = stores[0];
+    return `<article class="overview-series-summary-card">
+      <div class="overview-series-summary-head">
+        <div><span>${escapeHtml(label)}</span><small>${escapeHtml(modelScope)}</small></div>
+        <b class="${signClass(yoy)}">${formatSignedPct(yoy)}</b>
+      </div>
+      <div class="overview-series-summary-value"><strong>${formatWan(current.amount)}</strong><span>同期 ${formatWan(prior.amount)}</span></div>
+      <div class="overview-series-summary-qty"><span>有效台量 <b>${formatInteger(current.qty)}台</b></span><span>同期 ${formatInteger(prior.qty)}台</span><strong class="${signClass(qtyYoy)}">${formatSignedPct(qtyYoy)}</strong></div>
+      <p>${lead ? `主力店铺 ${escapeHtml(overviewStoreAlias(lead.name))}，贡献 ${formatWan(lead.current.amount)} / ${formatInteger(lead.current.qty)}台` : "当前周期暂无销售"}</p>
+      <ul class="overview-series-store-list">${storeList}</ul>
+      <details class="overview-disclosure"><summary>查看完整店铺明细</summary><div class="overview-disclosure-body">${renderSeriesStoreTable(currentRows, priorRows, currentPredicate, priorPredicate)}</div></details>
+    </article>`;
+  }
+
+  const PRICE_MONITOR_COLORS = ["#a71d27", "#d87842", "#b88a35", "#6c819d", "#4f7a6d", "#78507a"];
+
+  function median(values) {
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!sorted.length) return NaN;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function competitorPriceItems(rows) {
+    const groups = groupRows(rows, (row) => `${row.brand}::${row.model}`);
+    return [...groups.values()].map((grouped) => {
+      const ordered = [...grouped].sort((a, b) => a.date.localeCompare(b.date));
+      const latest = ordered.at(-1);
+      const previous = ordered.length > 1 ? ordered.at(-2) : null;
+      return {
+        brand: latest.brand,
+        model: latest.model,
+        latestDate: latest.date,
+        latestPrice: Number(latest.price || 0),
+        previousPrice: previous ? Number(previous.price || 0) : NaN,
+        change: previous ? ratioChange(Number(latest.price || 0), Number(previous.price || 0)) : NaN,
+        rows: ordered,
+      };
+    }).sort((a, b) => b.latestPrice - a.latestPrice || a.model.localeCompare(b.model, "zh-CN"));
+  }
+
+  function renderCompetitorPriceTrend(rows, referenceLines) {
+    const dates = uniqueSorted(rows.map((row) => row.date));
+    const items = competitorPriceItems(rows);
+    if (!dates.length || !items.length) return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无竞品价格</h2><p>在价格监控表中补充日期价格后自动展示。</p></div></div>';
+    const validReferenceLines = referenceLines.filter((line) => Number.isFinite(line.value));
+    const width = 650;
+    const height = 245;
+    const pad = { left: 58, right: 22, top: 24, bottom: 38 };
+    const observed = items.flatMap((item) => item.rows.map((row) => Number(row.price || 0))).filter((value) => value > 0);
+    observed.push(...validReferenceLines.map((line) => line.value));
+    const rawMin = Math.min(...observed);
+    const rawMax = Math.max(...observed);
+    const padding = Math.max(80, (rawMax - rawMin) * 0.12);
+    const min = Math.max(0, rawMin - padding);
+    const max = rawMax + padding;
+    const range = max - min || 1;
+    const x = (index) => pad.left + (dates.length === 1 ? (width - pad.left - pad.right) / 2 : index / (dates.length - 1) * (width - pad.left - pad.right));
+    const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+    const ticks = [0, 1, 2, 3, 4].map((index) => {
+      const value = max - range * index / 4;
+      const ypos = y(value);
+      return `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${ypos.toFixed(1)}" y2="${ypos.toFixed(1)}" class="overview-chart-grid"/><text x="${pad.left - 8}" y="${(ypos + 4).toFixed(1)}" text-anchor="end">${escapeHtml(`¥${Math.round(value).toLocaleString("zh-CN")}`)}</text></g>`;
+    }).join("");
+    const labelIndexes = dates.length <= 6
+      ? dates.map((_, index) => index)
+      : [...new Set([0, Math.floor((dates.length - 1) / 2), dates.length - 1])];
+    const xLabels = labelIndexes.map((index) => `<text x="${x(index).toFixed(1)}" y="${height - 11}" text-anchor="middle">${escapeHtml(dates[index].slice(5))}</text>`).join("");
+    const series = items.map((item, itemIndex) => {
+      const valueMap = new Map(item.rows.map((row) => [row.date, Number(row.price || 0)]));
+      const points = dates.map((date, index) => valueMap.has(date) ? { index, date, value: valueMap.get(date) } : null).filter(Boolean);
+      const path = points.map((point, index) => `${index ? "L" : "M"}${x(point.index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+      const color = PRICE_MONITOR_COLORS[itemIndex % PRICE_MONITOR_COLORS.length];
+      const dots = points.map((point) => `<circle cx="${x(point.index).toFixed(1)}" cy="${y(point.value).toFixed(1)}" r="3.5" fill="${color}"><title>${escapeHtml(`${point.date} ${item.brand} ${item.model} ${formatCurrency(point.value)}`)}</title></circle>`).join("");
+      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
+    }).join("");
+    const priceReferenceLines = validReferenceLines.map((line) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(line.value).toFixed(1)}" y2="${y(line.value).toFixed(1)}" class="${line.kind === "pro" ? "competitor-pro-line" : "competitor-own-line"}"><title>${escapeHtml(`${line.label} ${formatCurrency(line.value)}`)}</title></line>`).join("");
+    const legend = items.map((item, index) => `<span title="${escapeHtml(`${item.brand} ${item.model}`)}"><i style="background:${PRICE_MONITOR_COLORS[index % PRICE_MONITOR_COLORS.length]}"></i>${escapeHtml(item.model)} <b>${formatCurrency(item.latestPrice)}</b></span>`).join("");
+    const referenceLegend = validReferenceLines.map((line) => `<span class="${line.kind === "pro" ? "pro" : "own"}"><i></i>${escapeHtml(line.label)} <b>${formatCurrency(line.value)}</b></span>`).join("");
+    return `<div class="competitor-trend"><div class="competitor-trend-legend">${legend}${referenceLegend}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="竞品价格趋势及我方均价线">${ticks}${xLabels}${priceReferenceLines}${series}</svg></div>`;
+  }
+
+  function renderCompetitiveSeriesCard(label, benchmark, currentRows, predicate, proPredicate, proLabel, isNodeProduct = false) {
+    const rows = competitorPrices.filter((row) => row.benchmark === benchmark);
+    const items = competitorPriceItems(rows);
+    const own = metricSummary(currentRows.filter(predicate));
+    const proOwn = metricSummary(currentRows.filter(proPredicate));
+    const ownPrice = own.qty ? own.amount / own.qty : NaN;
+    const proPrice = proOwn.qty ? proOwn.amount / proOwn.qty : NaN;
+    const latestPrices = items.map((item) => item.latestPrice);
+    const medianPrice = median(latestPrices);
+    const minPrice = latestPrices.length ? Math.min(...latestPrices) : NaN;
+    const maxPrice = latestPrices.length ? Math.max(...latestPrices) : NaN;
+    const medianGap = ratioChange(ownPrice, medianPrice);
+    const latestDate = items.map((item) => item.latestDate).sort().at(-1) || "";
+    let actionClass = "steady";
+    let action = "竞品价格接近，保持跟价监控";
+    if (Number.isFinite(medianGap) && medianGap > 0.08) {
+      actionClass = "risk";
+      action = "我方高于竞品中位，节点前复核活动价";
+    } else if (Number.isFinite(medianGap) && medianGap < -0.08) {
+      actionClass = "protect";
+      action = "我方低于竞品中位，优先保护价格";
+    }
+    const alertItem = [...items].filter((item) => Number.isFinite(item.change)).sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+    const alertText = alertItem
+      ? `${alertItem.brand} ${alertItem.model} 最新变动 ${formatSignedPct(alertItem.change)}`
+      : "当前仅1个监控日，补充后续价格即可识别波动";
+    const tableRows = items.map((item) => {
+      const gap = ratioChange(ownPrice, item.latestPrice);
+      const gapClass = !Number.isFinite(gap) ? "" : gap > 0.05 ? "price-gap-risk" : gap < -0.05 ? "price-gap-low" : "price-gap-close";
+      return `<tr>
+        <td>${escapeHtml(item.brand)}</td>
+        <td>${escapeHtml(item.model)}</td>
+        <td>${formatCurrency(item.latestPrice)}</td>
+        <td class="${signClass(item.change)}">${formatSignedPct(item.change)}</td>
+        <td class="${gapClass}">${Number.isFinite(gap) ? formatSignedPct(gap) : "-"}</td>
+      </tr>`;
+    });
+    return `<article class="competitive-series-card ${actionClass}">
+      <div class="competitive-series-heading">
+        <div><span>${escapeHtml(label)}</span><small>竞品监控截至 ${escapeHtml(latestDate || "-")}</small></div>
+        <b>${escapeHtml(action)}</b>
+      </div>
+      <div class="competitive-price-kpis">
+        <div><span>我方成交均价</span><strong>${Number.isFinite(ownPrice) ? formatCurrency(ownPrice) : "-"}</strong><small>取当前总览周期有效销售</small></div>
+        <div><span>竞品中位价</span><strong>${Number.isFinite(medianPrice) ? formatCurrency(medianPrice) : "-"}</strong><small>我方价差 ${formatSignedPct(medianGap)}</small></div>
+        <div><span>竞品最低价</span><strong>${Number.isFinite(minPrice) ? formatCurrency(minPrice) : "-"}</strong><small>区间 ${Number.isFinite(maxPrice) ? `${formatCurrency(minPrice)}–${formatCurrency(maxPrice)}` : "-"}</small></div>
+        <div><span>最新价格异动</span><strong>${alertItem ? formatSignedPct(alertItem.change) : "-"}</strong><small>${escapeHtml(alertText)}</small></div>
+      </div>
+      ${renderCompetitorPriceTrend(rows, [
+        { label: `${label}成交均价`, value: ownPrice, kind: "series" },
+        { label: `${proLabel}成交均价`, value: proPrice, kind: "pro" },
+      ])}
+      <div class="competitive-price-table">${table(["品牌", "竞品型号", "最新价", "较上次", "我方较竞品"], tableRows, 520)}</div>
+      <p class="competitive-price-guidance">${isNodeProduct ? "18M2为节点销售产品：核心竞品单次降价达到5%时，当天复核活动价、资源位和券补，不建议脱离竞品价格单独降价。" : "16M1处于强竞争强排机市场：优先保持主力店铺价格一致，竞品连续两次下调后再评估是否跟进，避免一次性价格扰动引发无效降价。"}</p>
+    </article>`;
+  }
+
+  function renderCompetitivePriceRadar(currentRows) {
+    if (!competitorPrices.length) {
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
+    }
+    return `<div class="competitive-price-radar">
+      <div class="competitive-price-note"><strong>决策口径</strong><span>我方价格取所选周期真实成交均价；竞品价格取监控表最新有效价格。价格监控可晚于销售数据1天，两者日期分别标注。</span></div>
+      <div class="competitive-price-grid">
+        ${renderCompetitiveSeriesCard("18M2系列", "18M2", currentRows, is18M2, is18M2Pro, "18M2Pro", true)}
+        ${renderCompetitiveSeriesCard("16M1系列", "16M1", currentRows, is16M1, is16M1Pro, "16M1Pro")}
+      </div>
+    </div>`;
+  }
+
+  const FOTILE_PRICE_LINE_COLORS = ["#a71d27", "#7b4fb2", "#b8860b"];
+  const COMPETITOR_PRICE_BRAND_COLORS = {
+    "美的": "#dc783e",
+    "海尔": "#547a9e",
+  };
+  const normalizeMonitoredModel = (value) => String(value || "").trim().toUpperCase().replaceAll(" ", "");
+  const isFotilePriceItem = (item) => String(item.brand || "").trim().includes("方太");
+  const competitorPriceBrandColor = (brand) => COMPETITOR_PRICE_BRAND_COLORS[String(brand || "").trim()] || "#73808d";
+
+  function renderFocusedPriceTrend(ownItems, competitorItems, focusItem) {
+    const dates = uniqueSorted([...ownItems, ...competitorItems].flatMap((item) => item.rows.map((row) => row.date)));
+    if (!dates.length || !ownItems.length) {
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>请在对应系列工作表中补充方太与竞品每日价格。</p></div></div>';
+    }
+    const width = 650;
+    const height = 255;
+    const pad = { left: 58, right: 22, top: 24, bottom: 38 };
+    const observed = [...ownItems, ...competitorItems]
+      .flatMap((item) => item.rows.map((row) => Number(row.price || 0)))
+      .filter((value) => value > 0);
+    const rawMin = Math.min(...observed);
+    const rawMax = Math.max(...observed);
+    const padding = Math.max(80, (rawMax - rawMin) * 0.12);
+    const min = Math.max(0, rawMin - padding);
+    const max = rawMax + padding;
+    const range = max - min || 1;
+    const x = (index) => pad.left + (dates.length === 1
+      ? (width - pad.left - pad.right) / 2
+      : index / (dates.length - 1) * (width - pad.left - pad.right));
+    const y = (value) => pad.top + (max - value) / range * (height - pad.top - pad.bottom);
+    const ticks = [0, 1, 2, 3, 4].map((index) => {
+      const value = max - range * index / 4;
+      const ypos = y(value);
+      return `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${ypos.toFixed(1)}" y2="${ypos.toFixed(1)}" class="overview-chart-grid"/><text x="${pad.left - 8}" y="${(ypos + 4).toFixed(1)}" text-anchor="end">${escapeHtml(`¥${Math.round(value).toLocaleString("zh-CN")}`)}</text></g>`;
+    }).join("");
+    const labelIndexes = dates.length <= 7
+      ? dates.map((_, index) => index)
+      : [...new Set([0, Math.floor((dates.length - 1) / 2), dates.length - 1])];
+    const xLabels = labelIndexes.map((index) => `<text x="${x(index).toFixed(1)}" y="${height - 11}" text-anchor="middle">${escapeHtml(dates[index].slice(5))}</text>`).join("");
+    const ownLines = ownItems.map((item, itemIndex) => {
+      const valueMap = new Map(item.rows.map((row) => [row.date, Number(row.price || 0)]));
+      const points = dates.map((date, index) => valueMap.has(date) ? {
+        index,
+        date,
+        value: valueMap.get(date),
+      } : null).filter(Boolean);
+      const selected = item.model === focusItem.model;
+      const color = FOTILE_PRICE_LINE_COLORS[itemIndex % FOTILE_PRICE_LINE_COLORS.length];
+      if (points.length === 1) {
+        const point = points[0];
+        return `<line x1="${(x(point.index) - 12).toFixed(1)}" x2="${(x(point.index) + 12).toFixed(1)}" y1="${y(point.value).toFixed(1)}" y2="${y(point.value).toFixed(1)}" stroke="${color}" class="fotile-price-line ${selected ? "selected" : "muted"}"><title>${escapeHtml(`${point.date} 方太 ${item.model} ${formatCurrency(point.value)}`)}</title></line>`;
+      }
+      const path = points.map((point, index) => `${index ? "L" : "M"}${x(point.index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+      return `<path d="${path}" fill="none" stroke="${color}" class="fotile-price-line ${selected ? "selected" : "muted"}"><title>${escapeHtml(`方太 ${item.model}价格线`)}</title></path>`;
+    }).join("");
+    const orderedCompetitors = [...competitorItems]
+      .sort((a, b) => Math.abs(a.latestPrice - focusItem.latestPrice) - Math.abs(b.latestPrice - focusItem.latestPrice));
+    const closestCompetitors = orderedCompetitors.slice(0, 3);
+    const highlighted = new Set(closestCompetitors.map((item) => `${item.brand}::${item.model}`));
+    const competitorDots = orderedCompetitors.map((item, itemIndex) => {
+      const isHighlighted = highlighted.has(`${item.brand}::${item.model}`);
+      const color = isHighlighted ? competitorPriceBrandColor(item.brand) : "#aeb5bd";
+      return item.rows.map((row) => {
+        const index = dates.indexOf(row.date);
+        const isLatest = row.date === item.latestDate;
+        const radius = isLatest && isHighlighted ? 7 : isHighlighted ? 6 : 5.3;
+        const xPos = x(index).toFixed(1);
+        const yPos = y(Number(row.price || 0)).toFixed(1);
+        return `<g class="competitor-price-marker ${isHighlighted ? "highlighted" : "muted"}">
+          <circle cx="${xPos}" cy="${yPos}" r="${radius}" fill="${color}" class="competitor-price-dot"/>
+          <text x="${xPos}" y="${(Number(yPos) + 2.4).toFixed(1)}" text-anchor="middle" class="competitor-dot-index">${itemIndex + 1}</text>
+          <title>${escapeHtml(`${itemIndex + 1}. ${row.date} ${item.brand} ${item.model} ${formatCurrency(row.price)}`)}</title>
+        </g>`;
+      }).join("");
+    }).join("");
+    const ownLegend = ownItems.map((item, index) => `<span class="fotile ${item.model === focusItem.model ? "selected" : ""}"><i style="--line-color:${FOTILE_PRICE_LINE_COLORS[index % FOTILE_PRICE_LINE_COLORS.length]}"></i>${escapeHtml(item.model)} <b>${formatCurrency(item.latestPrice)}</b></span>`).join("");
+    const competitorLegend = orderedCompetitors.map((item, index) => {
+      const isHighlighted = index < 3;
+      const color = isHighlighted ? competitorPriceBrandColor(item.brand) : "#aeb5bd";
+      return `<span class="competitor-model ${isHighlighted ? "highlighted" : "muted"}" title="${escapeHtml(`${item.brand} ${item.model}`)}"><i class="competitor-model-marker" style="--marker-color:${color}">${index + 1}</i>${escapeHtml(`${item.brand} ${item.model}`)} <b>${formatCurrency(item.latestPrice)}</b></span>`;
+    }).join("");
+    return `<div class="competitor-trend focused-price-trend">
+      <div class="competitor-trend-legend">${ownLegend}${competitorLegend}</div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="方太价格线与竞品每日价格点">${ticks}${xLabels}${ownLines}${competitorDots}</svg>
+    </div>`;
+  }
+
+  function renderFocusedPriceSeriesCard(label, benchmark, isNodeProduct = false) {
+    const rows = competitorPrices.filter((row) => row.benchmark === benchmark);
+    const items = competitorPriceItems(rows);
+    const ownItems = items.filter(isFotilePriceItem);
+    const competitorItems = items.filter((item) => !isFotilePriceItem(item));
+    const preferred = state.priceFocus[benchmark];
+    const focusItem = ownItems.find((item) => normalizeMonitoredModel(item.model) === normalizeMonitoredModel(preferred))
+      || ownItems.find((item) => normalizeMonitoredModel(item.model).includes("PRO"))
+      || ownItems[0];
+    if (!focusItem) {
+      return `<article class="competitive-series-card"><div class="empty-state"><div class="empty-state-inner"><h2>${escapeHtml(label)}暂无方太价格</h2></div></div></article>`;
+    }
+    if (state.priceFocus[benchmark] !== focusItem.model) state.priceFocus[benchmark] = focusItem.model;
+    const rankedCompetitors = [...competitorItems]
+      .sort((a, b) => Math.abs(a.latestPrice - focusItem.latestPrice) - Math.abs(b.latestPrice - focusItem.latestPrice));
+    const closest = rankedCompetitors[0];
+    const closestGapAmount = closest ? focusItem.latestPrice - closest.latestPrice : NaN;
+    const closestGapRate = closest ? ratioChange(focusItem.latestPrice, closest.latestPrice) : NaN;
+    const latestDate = items.map((item) => item.latestDate).sort().at(-1) || "";
+    const biggestDrop = [...competitorItems]
+      .filter((item) => Number.isFinite(item.change) && item.change < 0)
+      .sort((a, b) => a.change - b.change)[0];
+    let actionClass = "steady";
+    let action = "价差可控，保持跟价监控";
+    if (biggestDrop?.change <= -0.05) {
+      actionClass = "risk";
+      action = "竞品降价≥5%，当天复核活动价";
+    } else if (Number.isFinite(closestGapRate) && closestGapRate > 0.05) {
+      actionClass = "risk";
+      action = "我方高于最近竞品，复核节点价格";
+    } else if (biggestDrop?.change <= -0.03) {
+      actionClass = "watch";
+      action = "竞品降价3%–5%，准备跟价方案";
+    } else if (Number.isFinite(closestGapRate) && closestGapRate < -0.08) {
+      actionClass = "protect";
+      action = "我方明显低于最近竞品，优先保护价格";
+    }
+    const tableRows = rankedCompetitors.slice(0, 4).map((item) => {
+      const gap = ratioChange(focusItem.latestPrice, item.latestPrice);
+      const gapClass = !Number.isFinite(gap) ? "" : gap > 0.05 ? "price-gap-risk" : gap < -0.05 ? "price-gap-low" : "price-gap-close";
+      return `<tr>
+        <td>${escapeHtml(item.brand)}</td>
+        <td>${escapeHtml(item.model)}</td>
+        <td>${formatCurrency(item.latestPrice)}</td>
+        <td class="${signClass(item.change)}">${formatSignedPct(item.change)}</td>
+        <td class="${gapClass}">${Number.isFinite(gap) ? formatSignedPct(gap) : "-"}</td>
+      </tr>`;
+    });
+    return `<article class="competitive-series-card ${actionClass}">
+      <div class="competitive-series-heading">
+        <div><span>${escapeHtml(label)}</span><small>价格监控截至 ${escapeHtml(latestDate || "-")}</small></div>
+        <b>${escapeHtml(action)}</b>
+      </div>
+      <div class="price-focus-control">
+        <span>当前关注型号</span>
+        <div>${ownItems.map((item) => `<button type="button" data-price-focus-series="${escapeHtml(benchmark)}" data-price-focus-model="${escapeHtml(item.model)}" class="${item.model === focusItem.model ? "active" : ""}" aria-pressed="${item.model === focusItem.model}">${escapeHtml(item.model)}</button>`).join("")}</div>
+      </div>
+      <div class="competitive-price-kpis">
+        <div><span>方太当前价格</span><strong>${formatCurrency(focusItem.latestPrice)}</strong><small>${escapeHtml(focusItem.model)} · ${escapeHtml(focusItem.latestDate)}</small></div>
+        <div><span>最近竞品价格</span><strong>${closest ? formatCurrency(closest.latestPrice) : "-"}</strong><small>${closest ? escapeHtml(`${closest.brand} ${closest.model}`) : "暂无竞品"}</small></div>
+        <div><span>与最近竞品价差</span><strong class="${signClass(closestGapAmount)}">${Number.isFinite(closestGapAmount) ? formatSignedCurrency(closestGapAmount) : "-"}</strong><small>${formatSignedPct(closestGapRate)}</small></div>
+        <div><span>竞品最大日降幅</span><strong class="${biggestDrop ? "negative" : ""}">${biggestDrop ? formatSignedPct(biggestDrop.change) : "-"}</strong><small>${biggestDrop ? escapeHtml(`${biggestDrop.brand} ${biggestDrop.model}`) : "暂无降价"}</small></div>
+      </div>
+      ${renderFocusedPriceTrend(ownItems, competitorItems, focusItem)}
+      <div class="competitive-price-table">${table(["品牌", "核心竞品型号", "最新价", "日变动", `较${focusItem.model}`], tableRows, 520)}</div>
+      <p class="competitive-price-guidance">${isNodeProduct ? "18M2为节点销售产品：核心竞品单日降价达到3%即准备活动价方案，达到5%当天复核活动价、资源位和券补。" : "16M1处于强竞争强排机市场：优先保持主力店铺价格一致；竞品连续降价或单日降幅达到5%后再决定是否跟进。"}</p>
+    </article>`;
+  }
+
+  function renderFocusedPriceRadar() {
+    if (!competitorPrices.length) {
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
+    }
+    return `<div class="competitive-price-radar focused-price-radar">
+      <div class="competitive-price-note"><strong>阅读方式</strong><span>方太型号用连续价格线；竞品按与所选方太型号的价差由近到远编号，图中点与型号图例使用同一编号，前3个竞品高亮。</span></div>
+      <div class="competitive-price-grid">
+        ${renderFocusedPriceSeriesCard("18M2系列", "18M2", true)}
+        ${renderFocusedPriceSeriesCard("16M1系列", "16M1")}
+      </div>
+    </div>`;
+  }
+
+  function renderFocusedPriceExecutiveCard(label, benchmark) {
+    const rows = competitorPrices.filter((row) => row.benchmark === benchmark);
+    const items = competitorPriceItems(rows);
+    const ownItems = items.filter(isFotilePriceItem);
+    const competitorItems = items.filter((item) => !isFotilePriceItem(item));
+    const preferred = state.priceFocus[benchmark];
+    const focusItem = ownItems.find((item) => normalizeMonitoredModel(item.model) === normalizeMonitoredModel(preferred))
+      || ownItems.find((item) => normalizeMonitoredModel(item.model).includes("PRO"))
+      || ownItems[0];
+    if (!focusItem) return `<article class="overview-price-summary-card"><strong>${escapeHtml(label)}</strong><p>暂无方太价格数据</p></article>`;
+    if (state.priceFocus[benchmark] !== focusItem.model) state.priceFocus[benchmark] = focusItem.model;
+    const ranked = [...competitorItems].sort((a, b) => Math.abs(a.latestPrice - focusItem.latestPrice) - Math.abs(b.latestPrice - focusItem.latestPrice));
+    const closest = ranked[0];
+    const gapAmount = closest ? focusItem.latestPrice - closest.latestPrice : NaN;
+    const gapRate = closest ? ratioChange(focusItem.latestPrice, closest.latestPrice) : NaN;
+    const biggestDrop = [...competitorItems]
+      .filter((item) => Number.isFinite(item.change) && item.change < 0)
+      .sort((a, b) => a.change - b.change)[0];
+    let actionClass = "steady";
+    let action = "价差可控，保持跟价监控";
+    if (biggestDrop?.change <= -0.05) {
+      actionClass = "risk";
+      action = "竞品降价≥5%，当天复核活动价";
+    } else if (Number.isFinite(gapRate) && gapRate > 0.05) {
+      actionClass = "risk";
+      action = "我方高于最近竞品，复核节点价格";
+    } else if (biggestDrop?.change <= -0.03) {
+      actionClass = "watch";
+      action = "竞品降价3%–5%，准备跟价方案";
+    } else if (Number.isFinite(gapRate) && gapRate < -0.08) {
+      actionClass = "protect";
+      action = "我方明显低于最近竞品，优先保护价格";
+    }
+    return `<article class="overview-price-summary-card ${actionClass}">
+      <div class="overview-price-summary-head">
+        <div><span>${escapeHtml(label)}</span><small>监控截至 ${escapeHtml(focusItem.latestDate || "-")}</small></div>
+        <b>${escapeHtml(action)}</b>
+      </div>
+      <div class="price-focus-control">
+        <span>关注型号</span>
+        <div>${ownItems.map((item) => `<button type="button" data-price-focus-series="${escapeHtml(benchmark)}" data-price-focus-model="${escapeHtml(item.model)}" class="${item.model === focusItem.model ? "active" : ""}" aria-pressed="${item.model === focusItem.model}">${escapeHtml(item.model)}</button>`).join("")}</div>
+      </div>
+      <div class="overview-price-summary-metrics">
+        <div><span>我方价格</span><strong>${formatCurrency(focusItem.latestPrice)}</strong><small>${escapeHtml(focusItem.model)}</small></div>
+        <div><span>最近竞品</span><strong>${closest ? formatCurrency(closest.latestPrice) : "-"}</strong><small>${closest ? escapeHtml(`${closest.brand} ${closest.model}`) : "暂无竞品"}</small></div>
+        <div><span>价差</span><strong class="${signClass(gapAmount)}">${Number.isFinite(gapAmount) ? formatSignedCurrency(gapAmount) : "-"}</strong><small>${formatSignedPct(gapRate)}</small></div>
+        <div><span>竞品最大日变动</span><strong class="${biggestDrop ? "negative" : ""}">${biggestDrop ? formatSignedPct(biggestDrop.change) : "-"}</strong><small>${biggestDrop ? escapeHtml(`${biggestDrop.brand} ${biggestDrop.model}`) : "暂无降价"}</small></div>
+      </div>
+    </article>`;
+  }
+
+  function renderFocusedPriceExecutive() {
+    if (!competitorPrices.length) return renderFocusedPriceRadar();
+    return `<div class="overview-price-summary-grid">
+      ${renderFocusedPriceExecutiveCard("18M2系列", "18M2")}
+      ${renderFocusedPriceExecutiveCard("16M1系列", "16M1")}
+    </div>
+    <details class="overview-disclosure overview-price-detail"><summary>展开价格曲线与竞品明细</summary><div class="overview-disclosure-body">${renderFocusedPriceRadar()}</div></details>`;
+  }
+
+  function renderOverview() {
+    const currentRows = overviewRowsForRange(state.start, state.end);
+    const priorRows = overviewRowsForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
+    const targetSource = DATA.meta.files.find((name) => String(name).includes("2026H2")) || "2026H2经营目标模拟器";
+    const anchorYear = Number(state.end.slice(0, 4));
+    const monthStart = `${state.end.slice(0, 7)}-01`;
+    const yearStart = `${anchorYear}-01-01`;
+    const annualCurrentRows = overviewRowsForRange(yearStart, state.end);
+    const annualPriorRows = overviewRowsForRange(shiftYear(yearStart, -1), shiftYear(state.end, -1));
+    const monthCurrentRows = overviewRowsForRange(monthStart, state.end);
+    const monthPriorRows = overviewRowsForRange(shiftYear(monthStart, -1), shiftYear(state.end, -1));
+    const [monthYear, monthNumber] = state.end.slice(0, 7).split("-").map(Number);
+    const monthEnd = toIso(new Date(Date.UTC(monthYear, monthNumber, 0)));
+    const annualTarget = annualTargetPlan(anchorYear, state.end);
+    const monthTarget = {
+      ...targetSummaryForPeriod(monthStart, state.end),
+      periodStart: monthStart,
+      periodEnd: monthEnd,
+    };
+    const shapeItems = buildOverviewShapeStats(monthCurrentRows, monthPriorRows, monthStart);
+    const priceMetrics = buildPriceDecisionMetrics(monthCurrentRows, monthPriorRows, monthTarget, monthStart);
+    const n1Current = currentRows.filter(is16N1);
+    return `<div class="overview-page">
+      ${renderOverviewConclusion(priceMetrics, shapeItems)}
+      <section class="overview-executive-progress">
+        ${renderExecutiveProgressCard("全年累计销售进度", annualCurrentRows, annualPriorRows, annualTarget, { featured: true })}
+        ${renderExecutiveProgressCard("当月累计销售进度", monthCurrentRows, monthPriorRows, monthTarget, { monthly: true })}
+      </section>
+      ${renderShapeBridge(shapeItems)}
+      <details class="overview-disclosure overview-method-details"><summary>查看目标与计划节奏口径</summary><div class="overview-disclosure-body">${renderMonthlyTargetPlan(anchorYear, targetSource)}</div></details>
+      <section class="overview-content-grid">
+        ${panel("店铺经营", "销售前6店铺＋其他；用有效销售和三类形态同比直接判断结构是否健康", renderOverviewStoreTable(currentRows, priorRows), "overview-store-mix", { className: "overview-span-2" })}
+        ${panel("16N1销售作战视图", `下半年第一监控型号 · 销额与台量双进度 · 分日店铺台量贡献 · 近7日经营动能`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
+        ${panel("重点系列经营摘要", "先看系列销售、台量、同比和主力店铺；完整店铺明细按需展开", `<div class="overview-series-summary-grid">${renderSeriesExecutiveSummary(currentRows, priorRows, is18M2, is18M2, "18M2系列", "18M2 / 18M2Pro / 18M2Max")}${renderSeriesExecutiveSummary(currentRows, priorRows, is16M1, is16M1Prior, "16M1系列", "本期 16M1 / 16M1Pro / 16M1L · 同期 02-MS16T1 / MS16T2")}</div>`, "overview-series-summary", { className: "overview-span-2" })}
+        ${panel("核心型号价格预警", `总览只保留定价结论；价格曲线与竞品明细默认收起 · 价格截止 ${DATA.meta.priceMonitorDateMax || "-"}`, renderFocusedPriceExecutive(), "overview-competitive-price", { className: "overview-span-2" })}
+      </section>
+    </div>`;
+  }
+
   function renderCategory() {
     const currentRows = salesForRange(state.start, state.end);
     const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
@@ -1242,6 +2371,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderDashboard() {
     updateFilterContext();
+    if (state.tab === "overview") content.innerHTML = renderOverview();
     if (state.tab === "category") content.innerHTML = renderCategory();
     if (state.tab === "store") content.innerHTML = renderStore();
     if (state.tab === "core") content.innerHTML = renderCore();
@@ -1252,7 +2382,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (aiState.open) renderAiPanel();
   }
 
-  const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V46";
+  const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V47";
 
   function getSavedAiBusinessContext() {
     const fallback = { currentGoal: "", priorities: "", campaigns: "", constraints: "", notes: "" };
@@ -1320,12 +2450,12 @@ if (window.WATER_HEATER_DATA_READY) {
     const messages = chat.messages || [];
     const stage = chat.stage || { label: "等待提问", progress: 0 };
     const businessContext = getSavedAiBusinessContext();
-    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>把它当作经营分析师来用</strong><p>可以直接问“为什么”“问题在哪”“接下来怎么做”。4.6 会自动拆成多项查询，同时读取销售、奥维和产品索引，并对结论做第二遍复核。</p></div>`;
+    const conversation = messages.length ? messages.map(renderChatMessage).join("") : `<div class="ai-chat-welcome"><strong>把它当作经营分析师来用</strong><p>可以直接问“为什么”“问题在哪”“接下来怎么做”。4.7 会自动拆成多项查询，同时读取销售、奥维和产品索引，并对结论做第二遍复核。</p></div>`;
     const modeButtons = Object.entries(AI_MODES).map(([key, mode]) => `<button type="button" class="ai-mode-button ${aiState.mode === key ? "active" : ""}" data-ai-mode="${key}" ${chat.running ? "disabled" : ""}><strong>${escapeHtml(mode.label)}</strong><span>${escapeHtml(mode.description)}</span></button>`).join("");
 
     aiPanel.hidden = false;
     aiPanel.innerHTML = `<div class="ai-panel-header">
-      <div><p class="eyebrow">GTM AI COPILOT 4.6</p><h2>深度经营分析</h2><p>当前范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条销售记录。你的问题会自动转成多项证据查询。</p></div>
+      <div><p class="eyebrow">GTM AI COPILOT 4.7</p><h2>深度经营分析</h2><p>当前范围 ${escapeHtml(state.start)} 至 ${escapeHtml(state.end)} · ${formatInteger(rows.length)} 条销售记录。你的问题会自动转成多项证据查询。</p></div>
       <div class="ai-panel-actions"><button id="toggleAiContext" class="ghost-action" type="button">${aiState.contextOpen ? "收起经营背景" : "编辑经营背景"}</button><button id="clearAiConversation" class="ghost-action" type="button" ${chat.running ? "disabled" : ""}>清空对话</button><button id="closeAiPanel" class="close-button" type="button">收起AI面板</button></div>
     </div>
     <div class="ai-mode-grid" aria-label="分析模式">${modeButtons}</div>
@@ -1369,7 +2499,7 @@ if (window.WATER_HEATER_DATA_READY) {
     });
     document.querySelectorAll("[data-ai-mode]").forEach((button) => button.addEventListener("click", () => {
       aiState.mode = button.dataset.aiMode;
-      localStorage.setItem("WATER_HEATER_AI_MODE_V46", aiState.mode);
+      localStorage.setItem("WATER_HEATER_AI_MODE_V47", aiState.mode);
       chatController.setMode(aiState.mode);
     }));
     document.querySelectorAll("[data-ai-question], [data-ai-followup]").forEach((button) => button.addEventListener("click", () => {
@@ -1404,10 +2534,19 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function updateFilterContext() {
+    const overviewMode = state.tab === "overview";
     const industryMode = state.tab === "industry";
     const modelMode = state.tab === "core";
-    document.getElementById("positionFilter").hidden = industryMode;
-    document.getElementById("coreFilter").hidden = modelMode;
+    ["channelFilter", "businessFilter", "shapeFilter", "seriesFilter"].forEach((id) => {
+      document.getElementById(id).hidden = overviewMode;
+    });
+    document.getElementById("positionFilter").hidden = overviewMode || industryMode;
+    document.getElementById("coreFilter").hidden = overviewMode || modelMode;
+    document.getElementById("resetFilters").hidden = overviewMode;
+    document.getElementById("globalFilterPanel").classList.toggle("overview-filter-mode", overviewMode);
+    document.body.classList.toggle("overview-active", overviewMode);
+    document.querySelector("#globalFilterPanel h2").textContent = overviewMode ? "总览时间" : "全局筛选";
+    document.querySelector("#globalFilterPanel .filter-panel-actions > span").textContent = overviewMode ? "仅按时间更新总览" : "所有模块同步更新";
   }
 
   function renderTabs() {
@@ -1472,6 +2611,13 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function renderFilterSummary() {
+    if (state.tab === "overview") {
+      const total = overviewRowsForRange(state.start, state.end).length;
+      const anchorMonth = state.end.slice(0, 7);
+      const monthCovered = targetSummaryForPeriod(`${anchorMonth}-01`, state.end).covered;
+      document.getElementById("filterSummary").textContent = `当前明细范围命中 ${formatInteger(total)} 行有效销售记录；顶部销售进度锚定结束日，全年累计至 ${state.end}，当月目标：${monthCovered ? anchorMonth : "未维护"}。`;
+      return;
+    }
     if (state.tab === "industry") {
       const { rows, fallback } = oviWindow();
       const lower = Math.min(state.priceLower, state.priceUpper);
@@ -1540,6 +2686,13 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function attachDynamicEvents() {
     document.querySelectorAll("[data-download-panel]").forEach((button) => button.addEventListener("click", () => downloadPanel(button.dataset.downloadPanel)));
+    document.querySelectorAll("[data-price-focus-series]").forEach((button) => button.addEventListener("click", () => {
+      const benchmark = button.dataset.priceFocusSeries;
+      const model = button.dataset.priceFocusModel;
+      if (!benchmark || !model || state.priceFocus[benchmark] === model) return;
+      state.priceFocus[benchmark] = model;
+      renderDashboard();
+    }));
     document.querySelectorAll("[data-price-impact-dimension]").forEach((button) => button.addEventListener("click", () => {
       const dimension = button.dataset.priceImpactDimension;
       if (!priceImpactSpec(dimension) || state.priceImpactDimension === dimension) return;
@@ -1769,7 +2922,7 @@ if (window.WATER_HEATER_DATA_READY) {
       `索引表 144 个产品中，系列字段未维护 ${d.missingSeriesProducts} 个；页面统一显示“未分系列”。`,
       "销售指数按销售金额 ÷ 核算价金额合计计算；分母为 0 时显示“-”。",
       `政策价直接取销售明细“通用政策价(元)”字段，覆盖 ${formatInteger(d.policyAvailableRows)} 行。`,
-      `店铺维度使用销售 Excel 的“客户名称/客户”字段，当前有效店铺 ${formatInteger(d.storeCount)} 个，缺失 ${formatInteger(d.missingStoreRows)} 行。`,
+      `店铺维度使用销售 Excel 的“客户名称/客户”字段；渠道字段为“天猫官旗”的方瑞、天猫优品、杭州多宝鱼、上海海亿等客户统一归并为“方太官方旗舰店（天猫）”。原始数据当前有效客户 ${formatInteger(d.storeCount)} 个，缺失 ${formatInteger(d.missingStoreRows)} 行。`,
       `奥维已更新至 ${DATA.meta.oviMonthMax}；单价取奥维“单价”字段，价位段仍按六档左闭右开边界划分。`,
     ].map((note) => `<p>${escapeHtml(note)}</p>`).join("");
   }
@@ -1777,17 +2930,19 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderMethodology() {
     const items = [
       ["销售来源", `${DATA.meta.files[1]}；${DATA.meta.files[2]}。有效日期 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax}。`],
-      ["店铺维度", "店铺取销售 Excel 的客户字段，优先使用“客户名称”，缺失时回退“客户/店铺/客户编号”；店铺内占比为型号销售额 ÷ 所选店铺销售额。"],
+      ["店铺维度", "店铺取销售 Excel 的客户字段，优先使用“客户名称”，缺失时回退“客户/店铺/客户编号”；渠道为“天猫官旗”的全部客户统一归并为“方太官方旗舰店（天猫）”；店铺内占比为型号销售额 ÷ 所选店铺销售额。"],
       ["产品分类", `${DATA.meta.files[0]}。系列、核心品、形态分类、定位、能效均直接取索引表。`],
       ["政策价来源", "直接取销售明细中的“通用政策价(元)”字段，不再使用旧政策价参照表按月份和产品名称匹配。"],
       ["行业来源", `${DATA.meta.files[4]}。覆盖 ${DATA.meta.oviMonthMin} 至 ${DATA.meta.oviMonthMax}，品牌配置为“${DATA.meta.brand}”。`],
+      ["经营目标", `${DATA.meta.files.find((name) => String(name).includes("2026H2")) || "2026H2经营目标模拟器"}。全年目标取“分货盘总览”中热水器合计的26年全年预计；分月目标读取“06_经营模拟”的最终销量与最终销售额。均价与销售指数不设置数值型目标，判断标准均为高于同期。`],
+      ["竞品价格", `${DATA.meta.files.find((name) => String(name).includes("价格监控")) || "价格监控.xlsx"}。严格按“18M2系列”和“16M1系列”工作表归类；方太型号价格显示为连续线，其他品牌显示为每日价格点，核心竞品按与所选方太型号的最新价差排序。`],
       ["价位段口径", "奥维单价字段与销额÷销量一致；固定结构分为2000以下、2000–2500、2500–3000、3000–3500、3500–4000、4000以上，自定义区间上下限均包含。"],
       ["同比口径", "销售按上年同期同日；奥维按上年同期月份。分母为0或无同期时显示“-”。"],
       ["销售指数", "销售金额 ÷ 核算价金额合计。原始核算价字段已包含数量影响。"],
       ["运行时派生指标", "价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
       ["AI分析上下文", "DeepSeek负责查询规划与结果解释；本地引擎执行白名单筛选、聚合、对比和异常计算，仅发送压缩结果，不发送完整原始明细。"],
       ["AI密钥安全", "前端不保存API Key；部署后由Netlify环境变量DEEPSEEK_API_KEY注入Function代理。"],
-      ["缺失处理", "库存、收入、成本、费用、目标、销售侧升数与区域等未提供字段不推算。"],
+      ["缺失处理", "库存、收入、成本、费用、渠道目标、目标市占、销售侧升数与区域等未提供字段不推算。"],
     ];
     document.getElementById("methodology").innerHTML = items.map(([title, text]) => `<div class="method-item"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div>`).join("");
   }
@@ -1864,7 +3019,7 @@ if (window.WATER_HEATER_DATA_READY) {
     if (shouldHide) document.querySelectorAll(".filter-menu").forEach((menu) => { menu.hidden = true; });
   });
 
-  document.getElementById("sourceLine").textContent = `【更新时间：${DATA.meta.generatedAt}】【读取文件：${DATA.meta.files.filter((name) => !String(name).includes("出库")).join(" / ")}】`;
+  document.getElementById("sourceLine").textContent = `数据快照 ${DATA.meta.generatedAt} · 销售 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax} · 奥维 ${DATA.meta.oviMonthMax || "-"} · 价格 ${DATA.meta.priceMonitorDateMax || "-"}`;
   document.getElementById("freshnessPill").textContent = `销售截止 ${DATA.meta.salesDateMax}`;
   chatController.setOnChange((snapshot) => {
     aiState.chat = snapshot;

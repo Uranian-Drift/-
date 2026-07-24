@@ -1,5 +1,5 @@
-import { AI_MODES, MULTI_QUERY_WHITELIST } from "../config/ai-config.js";
-import { buildDeepPlannerMessages } from "./prompts-v2.js";
+import { AI_MODES, MULTI_QUERY_WHITELIST } from "../config/ai-config.js?v=20260722b";
+import { buildDeepPlannerMessages } from "./prompts-v2.js?v=20260722b";
 
 const unique = (values) => [...new Set((Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter(Boolean))];
 const isDate = (value) => /^\d{4}-\d{2}(?:-\d{2})?$/.test(String(value || ""));
@@ -27,7 +27,7 @@ function safeQuery(query, index, modeConfig) {
   const groupBy = unique(query?.groupBy).filter((field) => MULTI_QUERY_WHITELIST.dimensions.includes(field)).slice(0, 2);
   const metrics = unique(query?.metrics).filter((field) => MULTI_QUERY_WHITELIST.metrics.includes(field));
   const comparison = MULTI_QUERY_WHITELIST.comparisons.includes(query?.comparison) ? query.comparison : "year_over_year";
-  const field = String(query?.sort?.field || (dataset === "outbound" ? "outboundAmount" : dataset === "ovi" ? "marketSales" : "salesAmount"));
+  const field = String(query?.sort?.field || (dataset === "ovi" ? "marketSales" : "salesAmount"));
   return {
     id: String(query?.id || `q${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 30) || `q${index + 1}`,
     label: String(query?.label || `分析任务${index + 1}`).slice(0, 80),
@@ -50,7 +50,7 @@ const query = (id, label, dataset, groupBy = [], options = {}) => ({
   metrics: [],
   groupBy,
   comparison: "year_over_year",
-  sort: { field: dataset === "outbound" ? "outboundAmount" : dataset === "ovi" ? "marketSales" : "salesAmount", direction: "desc" },
+  sort: { field: dataset === "ovi" ? "marketSales" : "salesAmount", direction: "desc" },
   limit: options.limit || 40,
   includeTrend: Boolean(options.includeTrend),
 });
@@ -66,7 +66,6 @@ export function buildFallbackDeepPlan({ question, mode = "deep" } = {}) {
       query("by_channel", "渠道经营变化", "sales", ["channel"]),
       query("by_store", "店铺经营变化", "sales", ["store"]),
       query("by_shape_series", "新版形态与系列结构变化", "sales", ["newShape", "series"]),
-      query("sales_outbound", "销售与出库匹配度", "cross", ["model"]),
       query("industry_overall", "奥维行业规模与方太市占", "ovi", [], { includeTrend: true }),
     ].forEach((task) => { if (!tasks.some((item) => item.id === task.id)) tasks.push(task); });
   }
@@ -80,7 +79,7 @@ export function buildFallbackDeepPlan({ question, mode = "deep" } = {}) {
   }
   return {
     analysisGoal: question || "分析当前经营表现并定位主要驱动因素",
-    hypotheses: ["产品结构变化", "渠道或店铺贡献变化", "价格与销量变化", "出库与销售节奏不一致", "行业规模或市占变化"],
+    hypotheses: ["产品结构变化", "渠道或店铺贡献变化", "价格与销量变化", "行业规模或市占变化"],
     queries: tasks.slice(0, modeConfig.maxQueries).map((item, index) => safeQuery(item, index, modeConfig)),
     answerFocus: ["最大正负贡献", "内部因素与市场因素", "可执行动作与观察指标"],
     missingContext: [],

@@ -1,18 +1,18 @@
-import { AI_MODES } from "../config/ai-config.js";
+import { AI_MODES } from "../config/ai-config.js?v=20260722b";
 import { BUSINESS_CONTEXT } from "../config/business-context.js";
 import { createSemanticLayer } from "../engine/semantic-layer.js";
 import { createMultiQueryEngine } from "../engine/multi-query-engine.js";
 import { buildEvidencePack } from "../engine/evidence-builder.js";
-import { planDeepAnalysis } from "./deep-planner.js";
-import { generateBusinessAnalysis } from "./business-analyst.js";
-import { reviewBusinessAnalysis } from "./analysis-reviewer.js";
+import { planDeepAnalysis } from "./deep-planner.js?v=20260722b";
+import { generateBusinessAnalysis } from "./business-analyst.js?v=20260722b";
+import { reviewBusinessAnalysis } from "./analysis-reviewer.js?v=20260722b";
 import { createConversationMemoryV2 } from "./conversation-memory-v2.js";
 import { callDeepSeek } from "../llm/provider.js";
 
 const STAGES = Object.freeze({
   idle: { id: "idle", label: "等待提问", progress: 0 },
   planning: { id: "planning", label: "拆解经营问题并制定分析任务", progress: 12 },
-  querying: { id: "querying", label: "计算销售、出库和奥维证据", progress: 38 },
+  querying: { id: "querying", label: "计算销售和奥维证据", progress: 38 },
   evidence: { id: "evidence", label: "整理贡献、趋势与交叉证据", progress: 56 },
   analyzing: { id: "analyzing", label: "DeepSeek生成经营判断与行动方案", progress: 72 },
   reviewing: { id: "reviewing", label: "复核数字、逻辑与建议", progress: 90 },

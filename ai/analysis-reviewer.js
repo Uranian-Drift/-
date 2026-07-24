@@ -1,4 +1,4 @@
-import { buildReviewerMessages } from "./prompts-v2.js";
+import { buildReviewerMessages } from "./prompts-v2.js?v=20260722b";
 import { analysisToText, normalizeAnalysis } from "./business-analyst.js";
 
 function parseJson(content) {

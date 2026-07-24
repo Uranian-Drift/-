@@ -1,4 +1,4 @@
-import { AI_MODES, MULTI_QUERY_WHITELIST } from "../config/ai-config.js";
+import { AI_MODES, MULTI_QUERY_WHITELIST } from "../config/ai-config.js?v=20260722b";
 
 const catalogPreview = (catalog = {}) => Object.fromEntries(Object.entries(catalog).map(([key, values]) => [key, (values || []).slice(0, 250)]));
 
@@ -10,7 +10,7 @@ export function buildDeepPlannerMessages({ question, mode, dashboardFilters, mem
     queries: [{
       id: "q1",
       label: "查询目的",
-      dataset: "sales | outbound | ovi | cross",
+      dataset: "sales | ovi",
       filters: { startDate: null, endDate: null, models: [], series: [], shapes: [], newShapes: [], core: [], positions: [], channels: [], businesses: [], stores: [], brands: [], priceBands: [], volumeSegments: [] },
       metrics: [],
       groupBy: [],
@@ -28,9 +28,9 @@ export function buildDeepPlannerMessages({ question, mode, dashboardFilters, mem
       content: `你是方太热水器电商经营分析的高级任务规划器。你的职责不是直接回答，而是把经营问题拆成一组可由本地数据引擎执行的查询。只返回严格JSON，不得输出Markdown或解释。\n
 规划原则：\n
 1. ${modeConfig.label}最多生成${modeConfig.maxQueries}条查询。\n
-2. 一个原因诊断必须覆盖整体、产品/型号、渠道、店铺、形态或系列、量价、出库和奥维中的相关部分。\n
+2. 一个原因诊断必须覆盖整体、产品/型号、渠道、店铺、形态或系列、量价和奥维中的相关部分。\n
 3. 优先使用year_over_year；用户明确要求环比时才使用previous_period或previous_month。\n
-4. cross数据集用于销售与出库交叉分析；ovi用于行业规模、市占、排名和价格带。\n
+4. ovi用于行业规模、市占、排名和价格带。\n
 5. 不得生成SQL、JavaScript或白名单外字段。\n
 6. 明确问题条件优先于看板筛选；没有明确日期时使用看板日期。\n
 7. 对简单查数不要生成无关查询；对“为什么、诊断、策略、总结”必须进行多维验证。\n
@@ -64,7 +64,7 @@ export function buildBusinessAnalystMessages({ question, mode, evidence }) {
 3. 原因按影响大小排序，不要泛泛而谈。\n
 4. 建议必须落到型号、系列、渠道、店铺或价格动作，并包含观察周期与成功指标。\n
 5. 同时说明正向贡献和负向贡献，避免只描述下降项。\n
-6. 有奥维和出库证据时必须用于交叉验证内部问题与市场问题。\n
+6. 有奥维证据时必须用于交叉验证内部问题与市场问题。\n
 7. ${mode === "quick" ? "快速模式保持精简。" : mode === "professional" ? "专业模式提供完整驱动拆解。" : "深度模式应充分利用全部查询，形成多数据源诊断。"}\n
 输出Schema：${JSON.stringify(schema)}`,
     },

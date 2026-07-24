@@ -40,7 +40,7 @@ export const AI_MODES = Object.freeze({
   deep: Object.freeze({
     id: "deep",
     label: "深度诊断",
-    description: "跨销售、出库、奥维执行完整诊断并二次复核",
+    description: "跨销售与奥维执行完整诊断并二次复核",
     maxQueries: 15,
     maxRowsPerQuery: 60,
     maxTrendPoints: 180,
@@ -50,7 +50,7 @@ export const AI_MODES = Object.freeze({
 });
 
 export const MULTI_QUERY_WHITELIST = Object.freeze({
-  datasets: ["sales", "outbound", "ovi", "cross"],
+  datasets: ["sales", "ovi"],
   dimensions: [
     "date", "month", "model", "productCode", "series", "shape", "newShape", "core",
     "category", "position", "channel", "business", "store", "brand", "priceBand", "volumeSegment",
@@ -59,9 +59,8 @@ export const MULTI_QUERY_WHITELIST = Object.freeze({
   metrics: [
     "salesAmount", "quantity", "avgSellingPrice", "accountingAmount", "policyAmount", "priceIndex",
     "recoveryRate", "recordCount", "skuCount", "contribution", "salesGrowthRate", "quantityGrowthRate",
-    "avgPriceGrowthRate", "outboundQuantity", "outboundAmount", "outboundAvgPrice", "marketSales",
+    "avgPriceGrowthRate", "marketSales",
     "marketQuantity", "marketAvgPrice", "brandSales", "brandQuantity", "brandShare", "brandRank",
-    "sellThroughRate", "flowGap",
   ],
   filterKeys: [
     "startDate", "endDate", "models", "series", "shapes", "newShapes", "core", "categories", "positions",
@@ -78,10 +77,10 @@ export const QUERY_WHITELIST = Object.freeze({
 });
 
 export const RECOMMENDED_QUESTIONS = Object.freeze([
-  "本月经营表现为什么变化？请从型号、渠道、店铺、形态、出库和奥维进行深度诊断。",
+  "本月经营表现为什么变化？请从型号、渠道、店铺、形态和奥维进行深度诊断。",
   "找出本月销售下滑贡献最大的型号，并继续拆到渠道和店铺。",
   "哪些型号存在低价换量？对销售额和销售指数分别有什么影响？",
-  "销售和出库是否匹配？哪些型号可能存在渠道库存压力？",
+  "哪些型号的销售变化最值得关注？请继续拆到渠道和店铺。",
   "结合奥维判断方太的变化主要来自行业、价格段还是自身经营。",
   "生成本月GTM经营复盘和未来7天行动清单。",
 ]);
