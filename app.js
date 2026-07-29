@@ -16,7 +16,7 @@ if (window.WATER_HEATER_DATA_READY) {
   const content = document.getElementById("dashboardContent");
 
   if (!DATA) {
-    content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>数据快照未读取</h2><p>请确认数据加载文件和分片与页面位于同一项目中。</p></div></div>';
+    content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>数据快照未读取</h2><p>请确认 data/water-heater-data.js 与页面位于同一项目中。</p></div></div>';
     return;
   }
 
@@ -1064,10 +1064,42 @@ if (window.WATER_HEATER_DATA_READY) {
     });
   }
 
+  function renderShapeGrowthSnapshot(items) {
+    const totalCurrent = items.reduce((sum, item) => sum + item.current.amount, 0);
+    const totalPrior = items.reduce((sum, item) => sum + item.prior.amount, 0);
+    const cards = [
+      {
+        name: "整体销售",
+        amount: totalCurrent,
+        yoy: ratioChange(totalCurrent, totalPrior),
+        className: "overall",
+      },
+      ...items.map((item) => ({
+        name: item.name,
+        amount: item.current.amount,
+        yoy: item.yoy,
+        className: "",
+      })),
+    ];
+    return `<section class="overview-shape-growth">
+      <div class="overview-section-heading">
+        <div><p class="eyebrow">MONTHLY GROWTH SNAPSHOT</p><h3>当月销售与同比</h3><p>先看整体及各形态的销售增幅，再判断增长补位进度。</p></div>
+      </div>
+      <div class="overview-shape-growth-grid">
+        ${cards.map((item) => `<article class="overview-shape-growth-card ${item.className}">
+          <span>${escapeHtml(item.name)}</span>
+          <strong>${formatWan(item.amount)}</strong>
+          <small class="${signClass(item.yoy)}">同比 ${formatSignedPct(item.yoy)}</small>
+        </article>`).join("")}
+      </div>
+    </section>`;
+  }
+
   function renderShapeBridge(items) {
     const totalCurrent = items.reduce((sum, item) => sum + item.current.amount, 0);
     const totalPrior = items.reduce((sum, item) => sum + item.prior.amount, 0);
     const netDelta = totalCurrent - totalPrior;
+    const totalYoy = ratioChange(totalCurrent, totalPrior);
     const butterfly = items.find((item) => item.name === "蝶翼");
     const balance = items.find((item) => item.name === "平衡机");
     const other = items.find((item) => item.name === "其他");
@@ -1084,7 +1116,7 @@ if (window.WATER_HEATER_DATA_READY) {
     return `<section class="overview-shape-bridge">
       <div class="overview-section-heading">
         <div><p class="eyebrow">Growth Replacement Bridge</p><h3>当月形态增长补位</h3><p>直接看蝶翼与平衡机的增量，能否抵消其他产品下滑。</p></div>
-        <div class="overview-bridge-result ${coverageStatus}"><span>增长覆盖率</span><strong>${escapeHtml(coverageText)}</strong><small>整体同比增减 ${formatSignedWan(netDelta)}</small></div>
+        <div class="overview-bridge-result ${coverageStatus}"><span>增长覆盖率</span><strong>${escapeHtml(coverageText)}</strong><small>本月总额 ${formatWan(totalCurrent)} · 同比 ${formatSignedPct(totalYoy)}</small></div>
       </div>
       <div class="overview-shape-equation">
         ${term(butterfly, "第一增长盘")}
@@ -1093,7 +1125,7 @@ if (window.WATER_HEATER_DATA_READY) {
         <b aria-hidden="true">＋</b>
         ${term(other, "收缩盘")}
         <b aria-hidden="true">＝</b>
-        <article class="overview-equation-total ${signClass(netDelta)}"><span>整体净增减</span><strong>${formatSignedWan(netDelta)}</strong><small>蝶翼与平衡机共拉动 ${formatSignedWan(growthPull)}</small></article>
+        <article class="overview-equation-total ${signClass(netDelta)}"><span>整体净增减</span><strong>${formatSignedWan(netDelta)}</strong><small>总额同比 ${formatSignedPct(totalYoy)} · 蝶翼与平衡机共拉动 ${formatSignedWan(growthPull)}</small></article>
       </div>
     </section>`;
   }
@@ -1859,6 +1891,7 @@ if (window.WATER_HEATER_DATA_READY) {
         ${renderExecutiveProgressCard("全年累计销售进度", annualCurrentRows, annualPriorRows, annualTarget, { featured: true })}
         ${renderExecutiveProgressCard("当月累计销售进度", monthCurrentRows, monthPriorRows, monthTarget, { monthly: true })}
       </section>
+      ${renderShapeGrowthSnapshot(shapeItems)}
       ${renderShapeBridge(shapeItems)}
       <details class="overview-disclosure overview-method-details"><summary>查看目标与计划节奏口径</summary><div class="overview-disclosure-body">${renderMonthlyTargetPlan(anchorYear, targetSource)}</div></details>
       <section class="overview-content-grid">
