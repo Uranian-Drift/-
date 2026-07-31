@@ -1,5 +1,5 @@
-import { createDeepChatController } from "./ai/deep-chat-controller.js?v=20260722b";
-import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js?v=20260722b";
+import { createDeepChatController } from "./ai/deep-chat-controller.js?v=20260731a";
+import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js?v=20260731a";
 
 if (window.WATER_HEATER_DATA_READY) {
   try {
@@ -2498,7 +2498,7 @@ if (window.WATER_HEATER_DATA_READY) {
         <label>当前目标<input id="aiContextGoal" value="${escapeHtml(businessContext.currentGoal || "")}" placeholder="例如：提升M2系列规模并守住价格"></label>
         <label>优先事项<input id="aiContextPriorities" value="${escapeHtml(businessContext.priorities || "")}" placeholder="例如：京东自营、M1/M2/N核心品"></label>
         <label>近期活动<input id="aiContextCampaigns" value="${escapeHtml(businessContext.campaigns || "")}" placeholder="例如：618返场、上新、渠道补贴"></label>
-        <label>业务约束<input id="aiContextConstraints" value="${escapeHtml(businessContext.constraints || "")}" placeholder="例如：不能大幅降价、库存有限"></label>
+        <label>业务约束<input id="aiContextConstraints" value="${escapeHtml(businessContext.constraints || "")}" placeholder="例如：不能大幅降价、渠道节奏需稳定"></label>
         <label class="wide">补充说明<textarea id="aiContextNotes" rows="2" placeholder="可填写口径变化、异常订单、渠道特殊情况">${escapeHtml(businessContext.notes || "")}</textarea></label>
       </div>
     </section>
@@ -2975,7 +2975,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ["运行时派生指标", "价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
       ["AI分析上下文", "DeepSeek负责查询规划与结果解释；本地引擎执行白名单筛选、聚合、对比和异常计算，仅发送压缩结果，不发送完整原始明细。"],
       ["AI密钥安全", "前端不保存API Key；部署后由Netlify环境变量DEEPSEEK_API_KEY注入Function代理。"],
-      ["缺失处理", "库存、收入、成本、费用、渠道目标、目标市占、销售侧升数与区域等未提供字段不推算。"],
+      ["缺失处理", "收入、成本、费用、渠道目标、目标市占、销售侧升数与区域等未提供字段不推算。"],
     ];
     document.getElementById("methodology").innerHTML = items.map(([title, text]) => `<div class="method-item"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div>`).join("");
   }
