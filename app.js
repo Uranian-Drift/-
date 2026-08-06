@@ -1623,7 +1623,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderCompetitivePriceRadar(currentRows) {
     if (!competitorPrices.length) {
-      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“00-基础数据/价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
     }
     return `<div class="competitive-price-radar">
       <div class="competitive-price-note"><strong>决策口径</strong><span>我方价格取所选周期真实成交均价；竞品价格取监控表最新有效价格。价格监控可晚于销售数据1天，两者日期分别标注。</span></div>
@@ -1792,7 +1792,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderFocusedPriceRadar() {
     if (!competitorPrices.length) {
-      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>暂无价格监控数据</h2><p>在“00-基础数据/价格监控/价格监控.xlsx”中补充竞品价格后重新生成即可。</p></div></div>';
     }
     return `<div class="competitive-price-radar focused-price-radar">
       <div class="competitive-price-note"><strong>阅读方式</strong><span>方太型号用连续价格线；竞品按与所选方太型号的价差由近到远编号，图中点与型号图例使用同一编号，前3个竞品高亮。</span></div>
