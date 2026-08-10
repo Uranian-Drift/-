@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="D16E2、D13E2、16N1平衡机专项经营看板"
+    />
+    <title>平衡机经营看板｜D16E2 · D13E2 · 16N1</title>
+    <link rel="stylesheet" href="styles.css?v=20260810i" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead__inner">
+        <a class="brand-lockup" href="../" aria-label="返回AI经营看板">
+          <span class="brand-lockup__en">FOTILE</span>
+          <span class="brand-lockup__cn">方太</span>
+        </a>
+        <div class="masthead__copy">
+          <p class="eyebrow">燃气热水器 · 专项经营看板</p>
+          <h1>平衡机三型号经营看板</h1>
+          <p>D16E2 · D13E2 · 16N1｜有效销售额口径｜数据截至<span data-as-of>2026-08-09</span></p>
+        </div>
+        <div class="masthead__actions">
+          <a href="../" class="header-link">返回主看板</a>
+          <button type="button" class="header-button" data-print>打印 / 导出</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <section class="management-brief" aria-labelledby="brief-title">
+        <div>
+          <p class="section-kicker">核心结论 · <span data-brief-period>累计1月1日—8月9日</span></p>
+          <h2 id="brief-title" data-brief-title>
+            整体同比增长20.2%，但16升合计基本持平；16N1已经成为第一大单品。
+          </h2>
+          <p data-brief-detail>
+            新品新增186.5万元，几乎抵消D16E2减少187.7万元；净增量主要来自D13E2，但低基数需谨慎解读。
+          </p>
+        </div>
+        <span class="brief-badge" data-period-badge>累计口径</span>
+      </section>
+
+      <section class="kpi-grid" aria-label="核心指标">
+        <article class="kpi-card kpi-card--brand">
+          <p>平衡机销售额</p>
+          <strong data-kpi-sales>404.4万</strong>
+          <span data-kpi-sales-note>同期336.5万</span>
+        </article>
+        <article class="kpi-card kpi-card--brand">
+          <p>整体同比</p>
+          <strong data-kpi-yoy>+20.2%</strong>
+          <span data-kpi-yoy-note>净增67.9万</span>
+        </article>
+        <article class="kpi-card kpi-card--gold">
+          <p>新品16N1占比</p>
+          <strong data-kpi-new-share>46.1%</strong>
+          <span data-kpi-new-note>新增186.5万</span>
+        </article>
+        <article class="kpi-card kpi-card--blue">
+          <p>16升 / 13升结构</p>
+          <strong data-kpi-capacity>80.8% / 19.2%</strong>
+          <span data-kpi-capacity-note>16升同比−0.4%</span>
+        </article>
+      </section>
+
+      <section class="matrix-card" aria-labelledby="matrix-title">
+        <div class="matrix-card__head">
+          <div>
+            <p class="section-kicker">经营矩阵 · 同期与结构</p>
+            <h2 id="matrix-title">五个对象放在一张表里看清增长来源</h2>
+            <p data-period-description>
+              累计1月1日—8月9日，同期统一取2025年相同日期。
+            </p>
+          </div>
+          <div class="period-tabs" role="tablist" aria-label="分析时间范围">
+            <button
+              type="button"
+              role="tab"
+              aria-selected="true"
+              class="is-active"
+              data-period="ytd"
+            >
+              累计1月1日—8月9日
+            </button>
+            <button type="button" role="tab" aria-selected="false" data-period="pre">
+              新品前1—4月
+            </button>
+            <button type="button" role="tab" aria-selected="false" data-period="post">
+              新品后5—7月
+            </button>
+            <button type="button" role="tab" aria-selected="false" data-period="aug">
+              8月截至9日
+            </button>
+          </div>
+        </div>
+
+        <div class="table-shell" role="region" aria-label="平衡机经营矩阵" tabindex="0">
+          <table class="business-matrix">
+            <thead>
+              <tr>
+                <th scope="col">对象</th>
+                <th scope="col">2026销售额</th>
+                <th scope="col">2025同期</th>
+                <th scope="col">增量</th>
+                <th scope="col">2026销量</th>
+                <th scope="col">销售额占比</th>
+                <th scope="col" data-trend-title>1—8月变化</th>
+                <th scope="col">经营判断</th>
+              </tr>
+            </thead>
+            <tbody data-matrix-body></tbody>
+          </table>
+        </div>
+
+        <div class="matrix-card__foot">
+          <p data-matrix-foot>
+            <strong>累计口径：</strong>月度柱高按每行自身峰值归一化，仅用于看变化形态；鼠标悬停可查看当月销售额。
+          </p>
+          <div class="legend" aria-label="经营判断颜色说明">
+            <span><i class="legend__teal"></i>增长 / 放量</span>
+            <span><i class="legend__gold"></i>结构提醒</span>
+            <span><i class="legend__red"></i>规模承压</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="evidence-strip" aria-labelledby="evidence-title">
+        <div>
+          <p class="section-kicker" id="evidence-title">经营结论</p>
+          <ol class="evidence-strip__list is-single" data-evidence-list>
+            <li data-evidence-title>增长不是来自16升盘扩张，而是产品替代叠加13升增量</li>
+            <li data-evidence-detail hidden></li>
+          </ol>
+        </div>
+        <dl aria-label="结构变化证据">
+          <div>
+            <dt>D16E2变化</dt>
+            <dd data-evidence-d16>−187.7万</dd>
+          </div>
+          <div>
+            <dt>16N1新增</dt>
+            <dd class="is-positive" data-evidence-new>+186.5万</dd>
+          </div>
+          <div>
+            <dt>D13E2变化</dt>
+            <dd class="is-positive" data-evidence-d13>+69.1万</dd>
+          </div>
+          <div>
+            <dt data-evidence-total-label>整体净增</dt>
+            <dd class="is-positive" data-evidence-overall>+67.9万</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p>
+        口径：有效销售额；16升=D16E2+16N1，13升=D13E2；占比均按销售额计算；8月仅取1—9日。
+      </p>
+      <p>
+        数据来源：热水器25年有效销售.xlsx、26年有效销售数据.xlsx｜16N1上年同期为0，不计算同比率。
+      </p>
+    </footer>
+
+    <script src="../water-heater-data-loader.js?v=20260810i"></script>
+    <script src="data.js?v=20260810i"></script>
+    <script src="app.js?v=20260810i"></script>
+  </body>
+</html>
