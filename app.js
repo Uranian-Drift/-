@@ -1185,15 +1185,6 @@ if (window.WATER_HEATER_DATA_READY) {
     return value;
   };
 
-  const n1StoreBucket = (row) => {
-    const name = String(storeValue(row) || "").trim();
-    const channel = String(row.channel || "").trim();
-    if (channel === "天猫官旗" || name === "方太官方旗舰店（天猫）" || name === "天猫官旗") return "天猫官旗";
-    if (name.includes("方太自营二店") || name.includes("京东热水器自营")) return "京东热水器自营";
-    if (name.includes("北京京东世纪贸易有限公司") || name === "京东自营") return "京东自营";
-    return "其他";
-  };
-
   function modelTargetPlan(model, dates) {
     const normalized = String(model || "").trim().toUpperCase();
     const rows = targets.filter((item) => String(item.model || "").trim().toUpperCase() === normalized);
@@ -1371,10 +1362,18 @@ if (window.WATER_HEATER_DATA_READY) {
           : `进度落后，缺口 ${formatWan(Math.abs(paceGap))}`;
     const targetScopeLabel = targetPlan.coveredMonths.length === 1 ? "当月目标" : "所选月份目标";
 
-    const currentStoreMap = groupRows(currentRows, n1StoreBucket);
-    const recentStoreMap = groupRows(recentRows, n1StoreBucket);
-    const previousStoreMap = groupRows(previousRows, n1StoreBucket);
-    const storeOrder = ["天猫官旗", "京东自营", "京东热水器自营", "其他"];
+    const leadingStores = topStoreNames(currentRows, 5);
+    const leadingSet = new Set(leadingStores);
+    const storeBucket = (row) => leadingSet.has(storeValue(row)) ? storeValue(row) : "其他店铺";
+    const currentStoreMap = groupRows(currentRows, storeBucket);
+    const recentStoreMap = groupRows(recentRows, storeBucket);
+    const previousStoreMap = groupRows(previousRows, storeBucket);
+    const storeOrder = [...leadingStores];
+    if (
+      (currentStoreMap.get("其他店铺") || []).length
+      || (recentStoreMap.get("其他店铺") || []).length
+      || (previousStoreMap.get("其他店铺") || []).length
+    ) storeOrder.push("其他店铺");
     const storeItems = storeOrder.map((name) => {
       const rows = currentStoreMap.get(name) || [];
       const storeCurrent = metricSummary(rows);
@@ -1390,8 +1389,8 @@ if (window.WATER_HEATER_DATA_READY) {
         qtyChange: ratioChange(storeRecent.qty, storePrevious.qty),
       };
     });
-    const storeRows = storeItems.map((item) => `<tr class="${item.name === "其他" ? "overview-muted-row" : ""}">
-      <td title="${escapeHtml(item.name)}">${escapeHtml(overviewStoreAlias(item.name))}</td>
+    const storeRows = storeItems.map((item, index) => `<tr class="${item.name === "其他店铺" ? "overview-muted-row" : ""}">
+      <td title="${escapeHtml(item.name)}">${item.name === "其他店铺" ? "" : `<span class="n1-store-rank">${index + 1}</span>`}${escapeHtml(overviewStoreAlias(item.name))}</td>
       <td>${formatWan(item.current.amount)}</td>
       <td>${formatInteger(item.current.qty)}台</td>
       <td>${formatRate(current.amount ? item.current.amount / current.amount : NaN)}</td>
@@ -1409,7 +1408,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ${render16N1CumulativeChart(dates, actualDaily, targetPlan.dailyTargets)}
       ${render16N1DailyStack(dates, storeItems)}
     </div>`;
-    const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看16N1店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>固定展示天猫官旗、京东自营、京东热水器自营及其他；台量为销售数量净值</span></div><b class="${actionClass}">${escapeHtml(actionText)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
+    const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看16N1店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>按当前所选周期16N1有效销售额展示前5店铺，其余合并为其他店铺；近7日与前7日沿用同一批店铺</span></div><b class="${actionClass}">${escapeHtml(actionText)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
     return `<div class="n1-war-room">${kpis}${charts}${storeTable}</div>`;
   }
 
