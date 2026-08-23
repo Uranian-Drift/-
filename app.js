@@ -281,6 +281,24 @@ if (window.WATER_HEATER_DATA_READY) {
   const modelKeyOfProduct = (product = {}) => String(product.code || product.name || "").trim();
   const modelKeyOfRecord = (record) => modelKeyOfProduct(record?.product);
   const modelLabel = (item) => `${item.product.series || "未分系列"}｜${item.product.name || item.product.code || item.key}`;
+  const MODEL_PRIOR_REFERENCE_RULES = [
+    {
+      label: "02-MS16T1",
+      matchesCurrent: (product = {}) => /(?:^|-)16M1(?:-|$)/i.test(String(product.name || "")),
+      matchesPrior: (product = {}) => /02-MS16T1/i.test(String(product.name || "")),
+    },
+    {
+      label: "MS16T2",
+      matchesCurrent: (product = {}) => /16M1Pro/i.test(String(product.name || "")),
+      matchesPrior: (product = {}) => /MS16T2/i.test(String(product.name || "")),
+    },
+    {
+      label: "X16F1",
+      matchesCurrent: (product = {}) => /16F2Max/i.test(String(product.name || "")),
+      matchesPrior: (product = {}) => /X16F1/i.test(String(product.name || "")),
+    },
+  ];
+  const modelPriorReferenceRule = (product = {}) => MODEL_PRIOR_REFERENCE_RULES.find((rule) => rule.matchesCurrent(product));
 
   function modelCatalog(currentRows, priorRows, scope = "all") {
     const scoped = (rows) => scope === "core" ? rows.filter((row) => row.product.core) : rows;
@@ -304,6 +322,24 @@ if (window.WATER_HEATER_DATA_READY) {
         qtyYoy: ratioChange(current.qty, prior.qty),
       };
     }).sort((a, b) => b.current.amount - a.current.amount || b.current.qty - a.current.qty || modelLabel(a).localeCompare(modelLabel(b), "zh-CN"));
+  }
+
+  function modelCatalogWithPriorReferences(currentRows, priorRows, scope = "all", priorReferenceRows = priorRows) {
+    const referenceCandidates = priorReferenceRows.filter((row) => modelKeyOfRecord(row));
+    return modelCatalog(currentRows, priorRows, scope).map((item) => {
+      const rule = item.currentRows.length ? modelPriorReferenceRule(item.product) : null;
+      if (!rule) return item;
+      const mappedPriorRows = referenceCandidates.filter((row) => rule.matchesPrior(row.product));
+      const prior = metricSummary(mappedPriorRows);
+      return {
+        ...item,
+        priorRows: mappedPriorRows,
+        prior,
+        amountYoy: ratioChange(item.current.amount, prior.amount),
+        qtyYoy: ratioChange(item.current.qty, prior.qty),
+        priorReference: rule.label,
+      };
+    });
   }
 
   function median(values) {
@@ -1905,8 +1941,10 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderCategory() {
     const currentRows = salesForRange(state.start, state.end);
     const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
+    const priorModelReferenceRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1), false, ["series", "core"]);
     const trend = dailyTrend(currentRows, priorRows);
     const categoryModels = modelCatalog(currentRows, priorRows, "all");
+    const categoryComparableModels = modelCatalogWithPriorReferences(currentRows, priorRows, "all", priorModelReferenceRows);
     const shapeMode = SHAPE_BREAKDOWN_MODES[state.shapeBreakdownMode] || SHAPE_BREAKDOWN_MODES.original;
     const shapes = sortShapesByPriority(ranking(currentRows, priorRows, shapeStructureValue));
     const totalAmount = metricSummary(currentRows).amount;
@@ -2036,7 +2074,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ? `<div class="new-shape-table">${table(newStructureHeaders, newStructureRows, state.showShapeAmountDelta ? 1380 : 1270)}</div>`
       : table([shapeMode.column, "优先级", "金额", "同比", "占比", "均价", "销售指数", "指数净值差"], originalStructureRows, 720);
     const shapeModeDescription = `${shapeMode.subtitle}；蝶翼${state.splitButterfly ? "按M2=18L、M0/M1=16L拆分" : "合并展示"}${state.shapeBreakdownMode === "newClassification" ? "；蝶翼、平衡机与其他均可独立展开型号明细" : ""}`;
-    const modelRows = categoryModels.map((item, index) => {
+    const modelRows = categoryComparableModels.map((item, index) => {
       const amountYoy = ratioChange(item.current.amount, item.prior.amount);
       const avgPriceYoy = ratioChange(item.current.avgPrice, item.prior.avgPrice);
       const indexDelta = Number.isFinite(item.current.salesIndex) && Number.isFinite(item.prior.salesIndex)
@@ -2044,7 +2082,8 @@ if (window.WATER_HEATER_DATA_READY) {
       const share = totalAmount ? item.current.amount / totalAmount : NaN;
       const searchText = `${item.product.series || ""} ${item.product.shape || ""} ${item.product.name || ""} ${item.product.code || item.key}`.toLowerCase();
       const modelName = item.product.name || item.product.code || item.key;
-      return `<tr data-category-model-row="${escapeHtml(searchText)}"><td>${index + 1}</td><td><button type="button" class="model-detail-link" data-open-model-detail="${escapeHtml(item.key)}" title="进入${escapeHtml(modelName)}型号分析">${escapeHtml(modelName)}</button></td><td>${formatWan(item.current.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td><td>${formatRate(share)}</td><td>${escapeHtml(item.product.shape || "未分类")}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${item.product.core ? "核心品" : "非核心品"}</td></tr>`;
+      const priorReference = item.priorReference ? `<small class="model-prior-reference">同期参照：${escapeHtml(item.priorReference)}</small>` : "";
+      return `<tr data-category-model-row="${escapeHtml(searchText)}"><td>${index + 1}</td><td><button type="button" class="model-detail-link" data-open-model-detail="${escapeHtml(item.key)}" title="进入${escapeHtml(modelName)}型号分析">${escapeHtml(modelName)}</button>${priorReference}</td><td>${formatWan(item.current.amount)}</td><td>${formatWan(item.prior.amount)}</td><td class="${signClass(amountYoy)}">${formatSignedPct(amountYoy)}</td><td>${formatInteger(item.current.qty)}</td><td>${Number.isFinite(item.current.avgPrice) ? formatCurrency(item.current.avgPrice) : "-"}</td><td>${Number.isFinite(item.prior.avgPrice) ? formatCurrency(item.prior.avgPrice) : "-"}</td><td class="${signClass(avgPriceYoy)}">${formatSignedPct(avgPriceYoy)}</td><td>${Number.isFinite(item.current.salesIndex) ? item.current.salesIndex.toFixed(3) : "-"}</td><td class="${signClass(indexDelta)}">${Number.isFinite(indexDelta) ? `${indexDelta >= 0 ? "+" : ""}${indexDelta.toFixed(3)}` : "-"}</td><td>${formatRate(share)}</td><td>${escapeHtml(item.product.shape || "未分类")}</td><td>${escapeHtml(item.product.code || "-")}</td><td>${escapeHtml(item.product.series || "未分系列")}</td><td>${item.product.core ? "核心品" : "非核心品"}</td></tr>`;
     });
     const modelDetail = `<div class="search-row"><input id="categoryModelSearch" type="search" placeholder="搜索型号、编码、系列或形态" /></div>${table(["排名", "型号", "销售额", "同期销售", "销售同比", "销量", "成交均价", "同期均价", "均价同比", "销售指数", "指数净值差", "销售占比", "形态分类", "产品编码", "系列", "核心品"], modelRows, 1540)}`;
 
@@ -2052,7 +2091,7 @@ if (window.WATER_HEATER_DATA_READY) {
       <section class="content-grid">
         ${panel("销售额分日趋势", "按支付日期汇总，与上年同期同日比较", rankList(trend, (item) => formatWan(item.amount)), "daily-sales", { unit: "单位 / 元" })}
         ${panel("形态结构", shapeModeDescription, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${structureTable}`, "shape-structure")}
-        ${panel("型号经营明细", `当前共 ${formatInteger(categoryModels.length)} 个型号，默认按销售额从高到低排列`, modelDetail, "category-model-detail", { className: "span-2" })}
+        ${panel("型号经营明细", `当前共 ${formatInteger(categoryComparableModels.length)} 个型号，默认按销售额从高到低排列；指定型号按对应同期参照型号对比`, modelDetail, "category-model-detail", { className: "span-2" })}
         ${renderDataHealthPanel()}
       </section>
       ${renderPriceImpact(currentRows, priorRows)}`;
@@ -2061,7 +2100,8 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderCore() {
     const currentBaseRows = salesForRange(state.start, state.end, false, ["core"]);
     const priorBaseRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1), false, ["core"]);
-    const catalog = modelCatalog(currentBaseRows, priorBaseRows, state.modelScope);
+    const priorModelReferenceRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1), false, ["series", "core"]);
+    const catalog = modelCatalogWithPriorReferences(currentBaseRows, priorBaseRows, state.modelScope, priorModelReferenceRows);
     const catalogMap = new Map(catalog.map((item) => [item.key, item]));
     if (!catalogMap.has(state.selectedModel)) state.selectedModel = catalog[0]?.key || "";
     state.compareModels = state.compareModels.filter((key) => key !== state.selectedModel && catalogMap.has(key)).slice(0, 2);
@@ -2110,7 +2150,7 @@ if (window.WATER_HEATER_DATA_READY) {
         <button type="button" class="ghost-action" data-add-model-compare ${!compareCandidates.length || state.compareModels.length >= 2 ? "disabled" : ""}>加入对比</button>
         <div class="compare-chips">${compareChips || '<span class="neutral">尚未添加对比型号</span>'}</div>
       </div>
-      <p class="model-identity"><strong>${escapeHtml(selected.product.name || selected.key)}</strong><span>${escapeHtml(selected.product.code || "无编码")}</span><span>${escapeHtml(selected.product.series || "未分系列")}</span><span>${escapeHtml(selected.product.shape || "未分类")}</span><span>${selected.product.core ? "核心品" : "非核心品"}</span></p>
+      <p class="model-identity"><strong>${escapeHtml(selected.product.name || selected.key)}</strong><span>${escapeHtml(selected.product.code || "无编码")}</span><span>${escapeHtml(selected.product.series || "未分系列")}</span><span>${escapeHtml(selected.product.shape || "未分类")}</span><span>${selected.product.core ? "核心品" : "非核心品"}</span>${selected.priorReference ? `<span class="model-prior-reference-chip">同期参照：${escapeHtml(selected.priorReference)}</span>` : ""}</p>
     </section>`;
 
     const currentDailyMap = groupRows(selected.currentRows, (row) => row.date);

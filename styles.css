@@ -3496,6 +3496,15 @@ body.v42 {
   outline: none;
 }
 
+.v42 #category-model-detail .model-prior-reference {
+  display: block;
+  margin-top: 3px;
+  color: #a66f17;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .v42 #category-model-detail .data-table tbody tr:nth-child(even) td.table-column-0,
 .v42 #category-model-detail .data-table tbody tr:nth-child(even) td.table-column-1 {
   background: #fafbfc;
@@ -3873,6 +3882,12 @@ body.v42 {
   font-size: 9px;
   font-weight: 750;
   background: #f8f9fb;
+}
+
+.v42 .model-identity .model-prior-reference-chip {
+  color: #8f641d;
+  border-color: #eadabf;
+  background: #fff8eb;
 }
 
 .v42 .model-insight-grid {
