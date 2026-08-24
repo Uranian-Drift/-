@@ -1100,7 +1100,11 @@ if (window.WATER_HEATER_DATA_READY) {
     });
   }
 
-  function renderShapeGrowthSnapshot(items) {
+  function renderShapeGrowthSnapshot(items, options = {}) {
+    const eyebrow = options.eyebrow || "MONTHLY GROWTH SNAPSHOT";
+    const title = options.title || "当月销售与同比";
+    const description = options.description || "先看整体及各形态的销售增幅，再判断增长补位进度。";
+    const variant = options.variant ? ` ${options.variant}` : "";
     const totalCurrent = items.reduce((sum, item) => sum + item.current.amount, 0);
     const totalPrior = items.reduce((sum, item) => sum + item.prior.amount, 0);
     const cards = [
@@ -1117,9 +1121,9 @@ if (window.WATER_HEATER_DATA_READY) {
         className: "",
       })),
     ];
-    return `<section class="overview-shape-growth">
+    return `<section class="overview-shape-growth${variant}">
       <div class="overview-section-heading">
-        <div><p class="eyebrow">MONTHLY GROWTH SNAPSHOT</p><h3>当月销售与同比</h3><p>先看整体及各形态的销售增幅，再判断增长补位进度。</p></div>
+        <div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div>
       </div>
       <div class="overview-shape-growth-grid">
         ${cards.map((item) => `<article class="overview-shape-growth-card ${item.className}">
@@ -1131,7 +1135,12 @@ if (window.WATER_HEATER_DATA_READY) {
     </section>`;
   }
 
-  function renderShapeBridge(items) {
+  function renderShapeBridge(items, options = {}) {
+    const eyebrow = options.eyebrow || "GROWTH REPLACEMENT BRIDGE";
+    const title = options.title || "当月形态增长补位";
+    const description = options.description || "直接看蝶翼与平衡机的增量，能否抵消其他产品下滑。";
+    const periodLabel = options.periodLabel || "本月";
+    const variant = options.variant ? ` ${options.variant}` : "";
     const totalCurrent = items.reduce((sum, item) => sum + item.current.amount, 0);
     const totalPrior = items.reduce((sum, item) => sum + item.prior.amount, 0);
     const netDelta = totalCurrent - totalPrior;
@@ -1147,12 +1156,12 @@ if (window.WATER_HEATER_DATA_READY) {
     const term = (item, hint) => `<article class="overview-equation-term ${signClass(item?.delta)}">
       <span>${escapeHtml(item?.name || "-")}</span>
       <strong>${formatSignedWan(item?.delta)}</strong>
-      <small>${escapeHtml(hint)} · 本月${formatWan(item?.current?.amount || 0)} · 目标${formatRate(item?.completion)}</small>
+      <small>${escapeHtml(hint)} · ${escapeHtml(periodLabel)}${formatWan(item?.current?.amount || 0)} · 同比${formatSignedPct(item?.yoy)}</small>
     </article>`;
-    return `<section class="overview-shape-bridge">
+    return `<section class="overview-shape-bridge${variant}">
       <div class="overview-section-heading">
-        <div><p class="eyebrow">Growth Replacement Bridge</p><h3>当月形态增长补位</h3><p>直接看蝶翼与平衡机的增量，能否抵消其他产品下滑。</p></div>
-        <div class="overview-bridge-result ${coverageStatus}"><span>增长覆盖率</span><strong>${escapeHtml(coverageText)}</strong><small>本月总额 ${formatWan(totalCurrent)} · 同比 ${formatSignedPct(totalYoy)}</small></div>
+        <div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div>
+        <div class="overview-bridge-result ${coverageStatus}"><span>增长覆盖率</span><strong>${escapeHtml(coverageText)}</strong><small>${escapeHtml(periodLabel)}总额 ${formatWan(totalCurrent)} · 同比 ${formatSignedPct(totalYoy)}</small></div>
       </div>
       <div class="overview-shape-equation">
         ${term(butterfly, "第一增长盘")}
@@ -1161,7 +1170,7 @@ if (window.WATER_HEATER_DATA_READY) {
         <b aria-hidden="true">＋</b>
         ${term(other, "收缩盘")}
         <b aria-hidden="true">＝</b>
-        <article class="overview-equation-total ${signClass(netDelta)}"><span>整体净增减</span><strong>${formatSignedWan(netDelta)}</strong><small>总额同比 ${formatSignedPct(totalYoy)} · 蝶翼与平衡机共拉动 ${formatSignedWan(growthPull)}</small></article>
+        <article class="overview-equation-total ${signClass(netDelta)}"><span>整体净增减</span><strong>${formatSignedWan(netDelta)}</strong><small>${escapeHtml(periodLabel)}总额同比 ${formatSignedPct(totalYoy)} · 蝶翼与平衡机共拉动 ${formatSignedWan(growthPull)}</small></article>
       </div>
     </section>`;
   }
@@ -1918,6 +1927,7 @@ if (window.WATER_HEATER_DATA_READY) {
       periodEnd: monthEnd,
     };
     const shapeItems = buildOverviewShapeStats(monthCurrentRows, monthPriorRows, monthStart);
+    const annualShapeItems = buildOverviewShapeStats(annualCurrentRows, annualPriorRows, yearStart);
     const priceMetrics = buildPriceDecisionMetrics(monthCurrentRows, monthPriorRows, monthTarget, monthStart);
     const n1Current = currentRows.filter(is16N1);
     return `<div class="overview-page">
@@ -1927,7 +1937,20 @@ if (window.WATER_HEATER_DATA_READY) {
         ${renderExecutiveProgressCard("当月累计销售进度", monthCurrentRows, monthPriorRows, monthTarget, { monthly: true })}
       </section>
       ${renderShapeGrowthSnapshot(shapeItems)}
+      ${renderShapeGrowthSnapshot(annualShapeItems, {
+        eyebrow: "YEAR-TO-DATE GROWTH SNAPSHOT",
+        title: "年累销售与同比",
+        description: `累计至 ${state.end}，对比上年同期。`,
+        variant: "annual",
+      })}
       ${renderShapeBridge(shapeItems)}
+      ${renderShapeBridge(annualShapeItems, {
+        eyebrow: "YEAR-TO-DATE REPLACEMENT BRIDGE",
+        title: "年累形态增长补位",
+        description: `累计至 ${state.end}，直接看各形态对年累增减的贡献。`,
+        periodLabel: "年累",
+        variant: "annual",
+      })}
       <details class="overview-disclosure overview-method-details"><summary>查看目标与计划节奏口径</summary><div class="overview-disclosure-body">${renderMonthlyTargetPlan(anchorYear, targetSource)}</div></details>
       <section class="overview-content-grid">
         ${panel("店铺经营", "销售前6店铺＋其他；用有效销售和三类形态同比直接判断结构是否健康", renderOverviewStoreTable(currentRows, priorRows), "overview-store-mix", { className: "overview-span-2" })}
