@@ -5529,13 +5529,138 @@ body.v42 {
 }
 
 .v49 .overview-command-actions {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 13px;
 }
 
 .v49 .overview-command-actions article {
   border-color: #e2e5e9;
   background: rgba(255, 255, 255, 0.92);
+}
+
+.v49 .overview-command-actions article.overview-kpi-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 15px;
+}
+
+.v49 .overview-command-actions article.overview-kpi-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: #ad1f2b;
+  content: "";
+}
+
+.v49 .overview-command-actions article.overview-kpi-card.qty::before {
+  background: #376c87;
+}
+
+.v49 .overview-command-actions article.overview-kpi-card.price::before {
+  background: #a66f17;
+}
+
+.v49 .overview-command-actions article.overview-income-summary {
+  grid-column: 1 / -1;
+  padding: 11px 13px;
+  border-color: #cde2db;
+  background: #f5faf8;
+}
+
+.v49 .overview-command-actions article.overview-income-summary strong {
+  color: #267364;
+}
+
+.v49 .overview-income-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v49 .overview-income-head > div:last-child {
+  min-width: 128px;
+  text-align: right;
+}
+
+.v49 .overview-income-head b,
+.v49 .overview-income-split b {
+  display: block;
+  margin-top: 3px;
+  color: #2b3037;
+  font-size: 12px;
+}
+
+.v49 .overview-income-head strong {
+  margin: 0 0 2px;
+  font-size: 20px;
+}
+
+.v49 .overview-income-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #d9e8e3;
+}
+
+.v49 .overview-income-split > div {
+  min-width: 0;
+  padding-left: 9px;
+  border-left: 2px solid #6d9e91;
+}
+
+.v49 .overview-income-split > div.jd-group {
+  border-left-color: #a66f17;
+}
+
+.v49 .overview-income-split b {
+  color: #267364;
+  font-size: 14px;
+}
+
+.v49 .overview-income-split .jd-group b {
+  color: #8c601c;
+}
+
+.v49 .income-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.v49 .income-group-head b {
+  margin: 0;
+}
+
+.v49 .income-group-head small {
+  margin-left: auto;
+}
+
+.v49 .income-subchannels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #e0d1b9;
+}
+
+.v49 .income-subchannels > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.v49 .income-subchannels b {
+  margin: 0;
+  font-size: 12px;
+}
+
+.v49 .income-subchannels small {
+  grid-column: 1 / -1;
 }
 
 .v49 .overview-command-actions span,
@@ -5858,6 +5983,74 @@ body.v42 {
   font-size: clamp(18px, 1.55vw, 24px);
 }
 
+.v49 .n1-summary-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.v49 .n1-ytd-banner {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, .42fr));
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid #dce3e8;
+  border-left: 4px solid #376c87;
+  border-radius: 11px;
+  background: #f5f8fa;
+}
+
+.v49 .n1-ytd-title strong,
+.v49 .n1-ytd-title span,
+.v49 .n1-ytd-metric span,
+.v49 .n1-ytd-metric strong,
+.v49 .n1-period-heading strong,
+.v49 .n1-period-heading span {
+  display: block;
+}
+
+.v49 .n1-ytd-title strong,
+.v49 .n1-period-heading strong {
+  color: #303640;
+  font-size: 13px;
+}
+
+.v49 .n1-ytd-title span,
+.v49 .n1-period-heading span,
+.v49 .n1-ytd-metric span {
+  margin-top: 3px;
+  color: #78828e;
+  font-size: 9px;
+}
+
+.v49 .n1-ytd-metric {
+  padding-left: 14px;
+  border-left: 1px solid #d8e0e6;
+}
+
+.v49 .n1-ytd-metric strong {
+  margin-top: 3px;
+  color: #376c87;
+  font-size: 19px;
+  line-height: 1.05;
+}
+
+.v49 .n1-month-summary {
+  display: grid;
+  gap: 7px;
+}
+
+.v49 .n1-period-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.v49 .n1-period-heading span {
+  margin-top: 0;
+}
+
 .v49 .n1-chart-title strong {
   font-size: 12px;
 }
@@ -5882,7 +6075,7 @@ body.v42 {
 .v49 .overview-series-summary-card,
 .v49 .overview-price-summary-card {
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid #dfe3e8;
   border-radius: 12px;
   background: linear-gradient(145deg, #fff, #fafbfc);
@@ -6061,12 +6254,12 @@ body.v42 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
-  margin-top: 10px;
+  margin-top: 7px;
 }
 
 .v49 .overview-price-summary-metrics > div {
   min-width: 0;
-  padding: 9px;
+  padding: 7px 8px;
   border: 1px solid #e5e8ec;
   border-radius: 8px;
   background: #fff;
@@ -6084,13 +6277,106 @@ body.v42 {
 
 .v49 .overview-price-summary-metrics strong {
   display: block;
-  margin: 5px 0 3px;
+  margin: 3px 0 2px;
   color: #2b3037;
-  font-size: 17px;
+  font-size: 15px;
+}
+
+.v49 .overview-price-summary-card .price-focus-control {
+  margin-top: 6px;
+  padding: 5px 7px;
+}
+
+.v49 .overview-price-summary-card .price-focus-control button {
+  padding: 4px 8px;
 }
 
 .v49 .overview-price-detail {
+  margin-top: 9px;
+}
+
+.v49 .overview-top-models {
   margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #e4e7eb;
+}
+
+.v49 .overview-top-models-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.v49 .overview-top-models-head span,
+.v49 .overview-top-models-head small {
+  display: block;
+}
+
+.v49 .overview-top-models-head span {
+  color: #252b32;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.v49 .overview-top-models-head small,
+.v49 .overview-top-models-head > b,
+.v49 .overview-top-model-reference {
+  color: #7c8692;
+  font-size: 9px;
+}
+
+.v49 .overview-top-models-head small {
+  margin-top: 2px;
+}
+
+.v49 .overview-top-models-head > b {
+  font-weight: 700;
+}
+
+.v49 .overview-top-model-name,
+.v49 .overview-top-model-reference {
+  display: block;
+}
+
+.v49 .overview-top-model-name {
+  color: #333940;
+  font-size: 10px;
+}
+
+.v49 .overview-top-model-reference {
+  margin-top: 2px;
+}
+
+.v49 .overview-top-models .data-table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 9px;
+}
+
+.v49 .overview-top-models .data-table th,
+.v49 .overview-top-models .data-table td {
+  padding: 7px 6px;
+}
+
+.v49 .overview-top-models .data-table .table-column-0 { width: 5%; }
+.v49 .overview-top-models .data-table .table-column-1 { width: 14%; }
+.v49 .overview-top-models .data-table .table-column-2 { width: 7%; }
+.v49 .overview-top-models .data-table .table-column-3 { width: 12%; }
+.v49 .overview-top-models .data-table .table-column-4 { width: 10%; }
+.v49 .overview-top-models .data-table .table-column-5 { width: 14%; }
+.v49 .overview-top-models .data-table .table-column-6 { width: 12%; }
+.v49 .overview-top-models .data-table .table-column-7 { width: 12%; }
+.v49 .overview-top-models .data-table .table-column-8 { width: 14%; }
+
+.v49 .overview-top-models .data-table .table-column-1 {
+  overflow-wrap: anywhere;
+}
+
+.v49 .overview-top-models .data-table .table-column-2 {
+  text-align: center;
+  white-space: nowrap;
 }
 
 .v49.overview-active .methodology {
@@ -6107,9 +6393,12 @@ body.v42 {
     margin-top: 4px;
   }
 
-  .v49 .overview-command-actions,
-  .v49 .overview-price-summary-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .v49 .overview-command-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .v49 .overview-command-actions article.overview-income-summary {
+    grid-column: 1 / -1;
   }
 
   .v49 .overview-shape-equation {
@@ -6118,6 +6407,25 @@ body.v42 {
 
   .v49 .overview-shape-equation > b {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .v49 .n1-ytd-banner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v49 .n1-ytd-title {
+    grid-column: 1 / -1;
+  }
+
+  .v49 .n1-ytd-title + .n1-ytd-metric {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .v49 .n1-period-heading {
+    display: block;
   }
 }
 
@@ -6132,9 +6440,12 @@ body.v42 {
 
   .v49 .overview-command-actions,
   .v49 .n1-kpi-grid,
-  .v49 .overview-price-summary-metrics,
   .v49 .overview-shape-growth-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v49 .overview-command-actions article.overview-income-summary {
+    grid-column: 1 / -1;
   }
 
   .v49 .overview-content-grid .data-table {
@@ -6149,8 +6460,856 @@ body.v42 {
 
 @media (max-width: 500px) {
   .v49 .overview-command-actions,
-  .v49 .n1-kpi-grid,
-  .v49 .overview-price-summary-metrics {
+  .v49 .n1-kpi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .v49 .overview-price-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v49 .overview-income-head {
+    align-items: flex-end;
+  }
+
+  .v49 .overview-income-split {
+    grid-template-columns: 1fr;
+  }
+
+  .v49 .income-subchannels {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 4.9 收入经营一级模块 */
+.v49 .tabs {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.v49 .income-filter-mode .unified-filters {
+  grid-template-columns: repeat(2, minmax(190px, 240px)) repeat(2, minmax(180px, 1fr)) auto;
+}
+
+.income-page {
+  display: grid;
+  gap: 14px;
+}
+
+.income-management-brief {
+  position: relative;
+  padding: 22px 24px 22px 30px;
+  overflow: hidden;
+  border: 1px solid #e0e4e9;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(25 32 41 / 6%);
+}
+
+.income-management-brief::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 7px;
+  background: #ad1f2b;
+}
+
+.income-management-brief h2 {
+  margin: 0;
+  color: #20242b;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.25;
+  letter-spacing: -0.035em;
+}
+
+.income-management-brief > p:last-child {
+  margin: 10px 0 0;
+  color: #68707d;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.income-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.income-kpi-grid .metric-card {
+  min-height: 118px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(25 32 41 / 5%);
+}
+
+.income-kpi-grid .metric-card:nth-child(3) {
+  border-top: 4px solid #376c87;
+}
+
+.income-kpi-grid .metric-card:nth-child(4) {
+  border-top: 4px solid #267364;
+}
+
+.income-kpi-grid .metric-card:nth-child(5) {
+  border-top: 4px solid #a66f17;
+}
+
+.income-definition-band {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dfe3e8;
+  border-radius: 14px;
+  background: #f8fafb;
+}
+
+.income-definition-band > div {
+  padding: 12px 14px;
+  border: 1px solid #e3e7eb;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.income-definition-band strong,
+.income-definition-band span {
+  display: block;
+}
+
+.income-definition-band strong {
+  color: #20242b;
+  font-size: 14px;
+}
+
+.income-definition-band span {
+  margin-top: 5px;
+  color: #ad1f2b;
+  font-weight: 800;
+}
+
+.income-definition-band div:nth-child(2) span {
+  color: #267364;
+}
+
+.income-definition-band div p {
+  margin: 5px 0 0;
+  color: #68707d;
+  font-size: 11px;
+}
+
+.income-timing-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #a66f17;
+  border-radius: 8px;
+  color: #6d604f;
+  background: #f7f0e4;
+}
+
+.income-content-grid {
+  margin-top: 0;
+}
+
+.income-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 2px 0 8px;
+  color: #68707d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.income-chart-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: #ad1f2b;
+}
+
+.income-chart-legend .income::before {
+  background: #376c87;
+}
+
+.income-chart-legend .rate::before {
+  border-radius: 50%;
+  background: #267364;
+}
+
+.income-monthly-chart {
+  display: block;
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+}
+
+.income-page .chart-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.income-driver-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.income-driver-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e0e4e9;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.income-driver-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.income-driver-head h3 {
+  margin: 0;
+  color: #303640;
+  font-size: 13px;
+}
+
+.income-driver-head span {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid #dfe3e8;
+  border-radius: 6px;
+  font-size: 9px;
+  background: #f6f7f8;
+}
+
+.income-driver-card > strong,
+.income-driver-card > small {
+  display: block;
+}
+
+.income-driver-card > strong {
+  margin-top: 13px;
+  color: #ad1f2b;
+  font-size: 27px;
+  line-height: 1;
+}
+
+.income-driver-card > small {
+  margin-top: 4px;
+  color: #7a838f;
+}
+
+.income-driver-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.income-driver-card dl div {
+  min-width: 0;
+}
+
+.income-driver-card dt,
+.income-driver-card dd {
+  margin: 0;
+}
+
+.income-driver-card dt {
+  color: #8b929d;
+  font-size: 9px;
+}
+
+.income-driver-card dd {
+  margin-top: 2px;
+  color: #343a43;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.income-driver-card > p {
+  margin: 12px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid #eceff2;
+  color: #68707d;
+  font-size: 10px;
+}
+
+.income-judgment {
+  display: inline-block;
+  padding: 4px 7px;
+  border: 1px solid #d9e5e1;
+  border-radius: 6px;
+  color: #267364;
+  background: #e8f3f0;
+  white-space: nowrap;
+}
+
+.income-judgment.watch {
+  color: #8b5c14;
+  border-color: #ead8b9;
+  background: #f7f0e4;
+}
+
+.income-judgment.risk {
+  color: #9c1d28;
+  border-color: #eccfd2;
+  background: #fae9eb;
+}
+
+.overview-shape-compact {
+  padding: 13px 15px 15px;
+  border: 1px solid #dfe3e8;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgb(25 32 41 / 4%);
+}
+
+.overview-shape-compact .overview-section-heading {
+  margin-bottom: 9px;
+}
+
+.overview-shape-period-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-shape-period-card {
+  padding: 13px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.overview-shape-period-card.current {
+  border-color: #e3c9cc;
+  background: #fffafa;
+}
+
+.overview-shape-period-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 3px 11px;
+  border-bottom: 1px solid #e2e6ea;
+}
+
+.overview-shape-period-card > header span,
+.overview-shape-period-card > header small,
+.overview-shape-period-card > header strong,
+.overview-shape-period-card > header b {
+  display: block;
+}
+
+.overview-shape-period-card > header span {
+  color: #39414c;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.overview-shape-period-card > header small {
+  margin-top: 3px;
+  color: #8b929d;
+  font-size: 9px;
+}
+
+.overview-shape-period-total {
+  text-align: right;
+}
+
+.overview-shape-period-total strong {
+  color: #ad1f2b;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.overview-shape-period-total b {
+  margin-top: 5px;
+  font-size: 9px;
+}
+
+.overview-shape-period-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.overview-shape-metric {
+  position: relative;
+  min-width: 0;
+  padding: 11px 12px 10px 15px;
+  overflow: hidden;
+  border: 1px solid #e1e5e9;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.overview-shape-metric::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #9098a4;
+  content: "";
+}
+
+.overview-shape-metric.butterfly::before {
+  background: #ad1f2b;
+}
+
+.overview-shape-metric.balance::before {
+  background: #267364;
+}
+
+.overview-shape-metric.other::before {
+  background: #a66f17;
+}
+
+.overview-shape-metric.net {
+  border-color: #e4d2d4;
+  background: #fffafa;
+}
+
+.overview-shape-metric.net::before {
+  background: #ad1f2b;
+}
+
+.overview-shape-metric span,
+.overview-shape-metric strong,
+.overview-shape-metric small,
+.overview-shape-metric em {
+  display: block;
+}
+
+.overview-shape-metric span {
+  color: #68707d;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.overview-shape-metric strong {
+  margin-top: 5px;
+  color: #252b32;
+  font-size: 20px;
+  line-height: 1.05;
+}
+
+.overview-shape-metric small {
+  margin-top: 6px;
+  font-size: 9px;
+}
+
+.overview-shape-metric em {
+  margin-top: 3px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.n1-qty-trend-wrap {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #e2e6ea;
+  border-radius: 12px;
+  background: #f6f8fa;
+}
+
+.n1-qty-trend-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 2px;
+}
+
+.n1-qty-trend-heading strong,
+.n1-qty-trend-heading span {
+  display: block;
+}
+
+.n1-qty-trend-heading strong {
+  color: #303640;
+  font-size: 14px;
+}
+
+.n1-qty-trend-heading span {
+  margin-top: 3px;
+  color: #737d89;
+  font-size: 9px;
+}
+
+.n1-qty-trend-heading b {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid #dec7ca;
+  border-radius: 999px;
+  color: #9c1d28;
+  background: #fff;
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+
+.n1-qty-trend-card {
+  position: relative;
+  min-width: 0;
+  padding: 8px 9px 6px;
+  overflow: hidden;
+  border: 1px solid #e0e4e9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(25 32 41 / 3%);
+}
+
+.n1-qty-trend-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--series-color, #ad1f2b);
+  content: "";
+}
+
+.n1-qty-trend-card.featured {
+  border-color: #dec7ca;
+  background: #fff;
+}
+
+.n1-qty-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.n1-qty-card-head span {
+  color: #4d5662;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.n1-qty-card-head strong {
+  color: var(--series-color, #ad1f2b);
+  font-size: 15px;
+}
+
+.n1-qty-card-head small {
+  color: #8b929d;
+  font-size: 7px;
+}
+
+.n1-qty-trend-card svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 1px;
+}
+
+.n1-qty-trend-card.featured svg {
+  min-width: 0;
+}
+
+.n1-qty-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.n1-qty-trend-card svg text {
+  fill: #77808c;
+  font-size: 8px;
+}
+
+.n1-qty-data-label {
+  fill: #4d5662 !important;
+  font-size: 6px !important;
+  font-weight: 750;
+}
+
+.n1-qty-feature-area {
+  fill: color-mix(in srgb, var(--series-color, #ad1f2b) 8%, transparent);
+}
+
+@media (max-width: 1180px) {
+  .v49 .tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .v49 .income-filter-mode .unified-filters {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  .income-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .income-driver-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .n1-qty-channel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .v49 .tabs {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .v49 .income-filter-mode .unified-filters,
+  .income-kpi-grid,
+  .income-definition-band,
+  .income-driver-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-shape-period-card {
+    padding: 11px;
+  }
+
+  .overview-shape-period-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-shape-period-card > header {
+    min-height: 50px;
+  }
+
+  .overview-shape-period-total strong {
+    font-size: 22px;
+  }
+
+  .overview-shape-metric {
+    padding: 10px 9px 9px 12px;
+  }
+
+  .n1-qty-channel-grid {
+    grid-template-columns: none;
+    grid-auto-columns: minmax(260px, 86%);
+    grid-auto-flow: column;
+    padding-bottom: 4px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .n1-qty-channel-grid .n1-qty-trend-card {
+    scroll-snap-align: start;
+  }
+
+  .income-management-brief {
+    padding: 19px 18px 19px 24px;
+  }
+
+  .income-management-brief h2 {
+    font-size: 24px;
+  }
+
+  .income-timing-note {
+    grid-column: auto;
+  }
+}
+
+/* ================================================================
+   5.0 overview time-scope hierarchy
+   End-date anchor -> monthly decision -> dual-cycle evidence -> monitoring
+   ================================================================ */
+
+.v50 .overview-filter-mode .filter-panel-body {
+  grid-template-columns: minmax(240px, 320px);
+}
+
+.v50 .overview-filter-mode .unified-filters {
+  grid-template-columns: minmax(220px, 320px);
+}
+
+.v50 .overview-filter-mode .quick-date-row[hidden] {
+  display: none;
+}
+
+.v50 .overview-scope-map {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) repeat(4, minmax(150px, .8fr));
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid #dfe3e8;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgb(25 32 41 / 4%);
+}
+
+.v50 .overview-scope-map-title {
+  padding: 2px 8px 2px 4px;
+}
+
+.v50 .overview-scope-map-title .eyebrow {
+  margin: 0 0 4px;
+}
+
+.v50 .overview-scope-map-title h2 {
+  margin: 0;
+  color: #252b32;
+  font-size: 15px;
+}
+
+.v50 .overview-scope-map-title span {
+  display: block;
+  margin-top: 4px;
+  color: #77818d;
+  font-size: 9px;
+}
+
+.v50 .overview-scope-map article {
+  position: relative;
+  min-width: 0;
+  padding: 9px 10px 8px 13px;
+  overflow: hidden;
+  border: 1px solid #e1e5e9;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+
+.v50 .overview-scope-map article::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #376c87;
+  content: "";
+}
+
+.v50 .overview-scope-map article.monthly::before { background: #ad1f2b; }
+.v50 .overview-scope-map article.rolling::before { background: #267364; }
+.v50 .overview-scope-map article.snapshot::before { background: #a66f17; }
+
+.v50 .overview-scope-map article span,
+.v50 .overview-scope-map article strong,
+.v50 .overview-scope-map article small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v50 .overview-scope-map article span {
+  color: #5c6672;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.v50 .overview-scope-map article strong {
+  margin-top: 5px;
+  color: #2f353d;
+  font-size: 11px;
+}
+
+.v50 .overview-scope-map article small {
+  margin-top: 4px;
+  color: #828b96;
+  font-size: 8px;
+}
+
+.v50 .overview-scope-group {
+  display: grid;
+  gap: 9px;
+}
+
+.v50 .overview-scope-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid #dfe3e8;
+  border-left: 4px solid #376c87;
+  border-radius: 11px;
+  background: #f7f9fb;
+}
+
+.v50 .overview-scope-group.monthly .overview-scope-heading { border-left-color: #ad1f2b; }
+.v50 .overview-scope-group.rolling .overview-scope-heading { border-left-color: #267364; }
+
+.v50 .overview-scope-heading > b {
+  color: #aeb5bd;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.v50 .overview-scope-heading h2,
+.v50 .overview-scope-heading p {
+  margin: 0;
+}
+
+.v50 .overview-scope-heading h2 {
+  color: #252b32;
+  font-size: 15px;
+}
+
+.v50 .overview-scope-heading p {
+  margin-top: 2px;
+  color: #737d89;
+  font-size: 9px;
+}
+
+.v50 .overview-scope-heading > span {
+  padding: 4px 7px;
+  border: 1px solid #d8dde3;
+  border-radius: 999px;
+  color: #606b77;
+  background: #fff;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.v50 .overview-scope-body {
+  display: grid;
+  gap: 12px;
+}
+
+.v50 .overview-scope-body > .overview-content-grid {
+  margin: 0;
+}
+
+@media (max-width: 1180px) {
+  .v50 .overview-scope-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .v50 .overview-scope-map-title {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .v50 .overview-scope-map {
+    grid-template-columns: 1fr;
+  }
+
+  .v50 .overview-scope-map-title {
+    grid-column: auto;
+  }
+
+  .v50 .overview-scope-heading {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .v50 .overview-scope-heading > span {
+    grid-column: 2;
+    justify-self: start;
   }
 }
