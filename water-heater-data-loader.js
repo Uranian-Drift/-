@@ -1,12 +1,12 @@
 (() => {
   "use strict";
 
-  const version = "20260831v50b";
+  const version = "20260901v51d";
   const parts = [
     "water-heater-data-00.txt",
     "water-heater-data-01.txt",
     "water-heater-data-02.txt"
-];
+  ];
 
   window.WATER_HEATER_DATA_READY = (async () => {
     if (typeof DecompressionStream !== "function") {
@@ -21,7 +21,8 @@
     const binary = atob(encoded);
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-    window.WATER_HEATER_DATA = JSON.parse(await new Response(stream).text());
-    return window.WATER_HEATER_DATA;
+    const data = JSON.parse(await new Response(stream).text());
+    window.WATER_HEATER_DATA = data;
+    return data;
   })();
 })();
