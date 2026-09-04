@@ -6040,6 +6040,356 @@ body.v42 {
   gap: 7px;
 }
 
+/* Compact period summaries; volume comparisons stay visible below. */
+.v51 .n1-overview-row {
+  --n1-period-color: #376c87;
+  display: grid;
+  grid-template-columns: minmax(190px, .95fr) minmax(0, 3fr);
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid #dce3e8;
+  border-left: 4px solid var(--n1-period-color);
+  border-radius: 10px;
+  background: #f5f8fa;
+}
+
+.v51 .n1-overview-row.is-current {
+  --n1-period-color: #971d22;
+  border-color: #efd5d7;
+  border-left-color: #ad1f2b;
+  background: #fff7f8;
+}
+
+.v51 .n1-overview-period strong,
+.v51 .n1-overview-period span {
+  display: block;
+}
+
+.v51 .n1-overview-period strong {
+  color: var(--n1-period-color);
+  font-size: 13px;
+}
+
+.v51 .n1-overview-period strong b {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.v51 .n1-overview-period span {
+  margin-top: 4px;
+  color: #737d89;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.v51 .n1-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+}
+
+.v51 .n1-overview-metrics > div {
+  min-width: 0;
+}
+
+.v51 .n1-overview-metrics dt {
+  color: #697584;
+  font-size: 10px;
+}
+
+.v51 .n1-overview-metrics dd {
+  margin: 4px 0 0;
+  color: var(--n1-period-color);
+  font-size: clamp(18px, 1.55vw, 22px);
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.v51 .n1-month-trajectory {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.v51 .n1-month-trajectory-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v51 .n1-month-trajectory-heading > div {
+  min-width: 0;
+}
+
+.v51 .n1-month-trajectory-heading strong,
+.v51 .n1-month-trajectory-heading span {
+  display: block;
+}
+
+.v51 .n1-month-trajectory-heading strong {
+  color: #303640;
+  font-size: 13px;
+}
+
+.v51 .n1-month-trajectory-heading span {
+  margin-top: 2px;
+  color: #78828e;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.v51 .n1-month-track-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+
+.v51 .n1-month-track-table {
+  width: 100%;
+  min-width: 420px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+
+.v51 .n1-month-track-table.n1-main-store-volume-table {
+  min-width: 760px;
+}
+
+.v51 .n1-month-track-corner,
+.v51 .n1-month-track-heading,
+.v51 .n1-month-track-label,
+.v51 .n1-month-track-value {
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 0;
+  border-bottom: 1px solid #e8ebef;
+  vertical-align: middle;
+}
+
+.v51 .n1-month-track-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.v51 .n1-month-track-table tr > :last-child {
+  border-right: 0;
+}
+
+.v51 .n1-month-track-corner,
+.v51 .n1-month-track-heading {
+  color: #5f6975;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  background: #f4f6f8;
+}
+
+.v51 .n1-month-track-corner {
+  width: 78px;
+}
+
+.v51 .n1-month-track-table .is-business-start {
+  border-left: 1px solid #dfe3e8;
+}
+
+.v51 .n1-month-track-table tr.is-ytd > * {
+  color: #376c87;
+  background: #f0f6f9;
+}
+
+.v51 .n1-month-track-table tr.is-current > * {
+  color: #971d22;
+  background: #fff0f2;
+}
+
+.v51 .n1-month-business-note {
+  margin: 0;
+  color: #737d89;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.v51 .n1-month-track-label {
+  color: #5f6975;
+  font-size: 12px;
+  text-align: center;
+  background: #f9fafb;
+}
+
+.v51 .n1-month-track-label,
+.v51 .n1-month-track-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.v51 .n1-month-track-value {
+  color: #303640;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: #fff;
+}
+
+.v51 .n1-table-unit {
+  white-space: nowrap;
+}
+
+.v51 .n1-history-detail {
+  margin: 0 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.v51 .n1-history-detail > summary {
+  padding: 0 0 8px;
+  color: #303640;
+  font-size: 13px;
+}
+
+.v51 .n1-history-detail[open] > summary {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.v51 .n1-history-detail > summary:focus-visible {
+  outline: 2px solid #376c87;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.v51 .n1-history-detail .overview-disclosure-body {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+}
+
+/* Historical dimensions use one blue header and horizontal row rules only. */
+.v51 .n1-history-price-table thead th {
+  color: #376c87;
+  background: #e9f0f4;
+}
+
+.v51 .n1-history-price-table th,
+.v51 .n1-history-price-table td {
+  border-left: 0;
+  border-right: 0;
+}
+
+.v51 .n1-history-price-table tbody .n1-history-volume {
+  background: #fafbfc;
+}
+
+/* Group ownership is shown in the header; row colors still identify periods. */
+.v51 .n1-main-store-volume-table .n1-volume-period-col {
+  width: 78px;
+}
+
+.v51 .n1-main-store-volume-table .n1-group-jd {
+  --n1-group-ink: #376c87;
+  --n1-group-soft: #e9f0f4;
+  --n1-group-line: #afc4d1;
+}
+
+.v51 .n1-main-store-volume-table .n1-group-tmall {
+  --n1-group-ink: #267364;
+  --n1-group-soft: #e8f3f0;
+  --n1-group-line: #adccc3;
+}
+
+.v51 .n1-main-store-volume-table .n1-group-douyin {
+  --n1-group-ink: #805815;
+  --n1-group-soft: #f7f0e4;
+  --n1-group-line: #d5c39e;
+}
+
+.v51 .n1-main-store-volume-table .n1-group-start {
+  border-left: 2px solid var(--n1-group-line);
+}
+
+.v51 .n1-main-store-volume-table .n1-volume-group-row > th {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  white-space: nowrap;
+}
+
+.v51 .n1-main-store-volume-table .n1-volume-group-row > th[scope="colgroup"] {
+  color: var(--n1-group-ink);
+  background: var(--n1-group-soft);
+  font-size: 13px;
+  letter-spacing: .04em;
+}
+
+.v51 .n1-main-store-volume-table .n1-volume-store-row > th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  white-space: nowrap;
+  background: #f8f9fb;
+}
+
+.v51 .n1-main-store-volume-table thead .n1-volume-total {
+  color: #4d5662;
+  background: #eef1f4;
+}
+
+.v51 .n1-main-store-volume-table tbody tr:not(.is-ytd):not(.is-current) > .n1-volume-total {
+  background: #fafbfc;
+}
+
+.v51 .n1-main-store-volume-table .n1-month-track-corner {
+  z-index: 2;
+  background: #f4f6f8;
+}
+
+@media (max-width: 760px) {
+  .v51 .n1-overview-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 11px 12px;
+  }
+
+  .v51 .n1-overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+  }
+
+  .v51 .n1-month-track-table {
+    min-width: 0;
+  }
+
+  .v51 .n1-month-track-table .n1-month-track-corner {
+    width: 48px;
+  }
+
+  .v51 .n1-main-store-volume-table .n1-volume-period-col {
+    width: 48px;
+  }
+
+  .v51 .n1-month-track-table th,
+  .v51 .n1-month-track-table td {
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+}
+
 .v49 .n1-period-heading {
   display: flex;
   align-items: baseline;
@@ -7076,6 +7426,50 @@ body.v42 {
   fill: color-mix(in srgb, var(--series-color, #ad1f2b) 8%, transparent);
 }
 
+.v51 .n1-qty-trend-wrap {
+  width: 100%;
+  justify-self: stretch;
+  gap: 6px;
+  padding: 8px;
+}
+
+.v51 .n1-qty-trend-card {
+  padding: 7px 8px 5px;
+}
+
+.v51 .n1-qty-card-head {
+  flex-wrap: wrap;
+  gap: 2px 5px;
+}
+
+.v51 .n1-qty-card-head small {
+  font-size: 8px;
+}
+
+.v51 .n1-qty-data-label {
+  font-size: 7px !important;
+}
+
+.v51 .n1-qty-trend-card.featured .n1-qty-data-label {
+  font-size: 10px !important;
+}
+
+.v51 .n1-trend-plot-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.v51 .n1-qty-trend-card.featured svg text {
+  font-size: 10px;
+}
+
+@media (min-width: 981px) {
+  .v51 .n1-qty-channel-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1180px) {
   .v49 .tabs {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7099,6 +7493,10 @@ body.v42 {
 }
 
 @media (max-width: 760px) {
+  .v51 .n1-qty-trend-card.featured svg {
+    min-width: 900px;
+  }
+
   .v49 .tabs {
     display: flex;
     overflow-x: auto;
@@ -7616,6 +8014,71 @@ body.v42 {
   min-width: 700px;
 }
 
+.income-monthly-yoy-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 9px;
+  padding-top: 11px;
+  border-top: 1px solid #e4e8eb;
+}
+
+.income-monthly-yoy-head strong {
+  color: #343b45;
+  font-size: 12px;
+}
+
+.income-monthly-yoy-head span {
+  color: #89919c;
+  font-size: 9px;
+}
+
+.income-monthly-yoy {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.income-monthly-yoy article {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #e1e5e9;
+  border-radius: 9px;
+  background: #f9fafb;
+}
+
+.income-monthly-yoy span,
+.income-monthly-yoy strong,
+.income-monthly-yoy small,
+.income-monthly-yoy em {
+  display: block;
+}
+
+.income-monthly-yoy span,
+.income-monthly-yoy small {
+  color: #7c8692;
+  font-size: 8px;
+}
+
+.income-monthly-yoy strong {
+  margin-top: 4px;
+  color: #303741;
+  font-size: 15px;
+}
+
+.income-monthly-yoy small {
+  margin-top: 3px;
+}
+
+.income-monthly-yoy em {
+  margin-top: 5px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .income-business-ranking {
   display: grid;
   gap: 7px;
@@ -7624,7 +8087,7 @@ body.v42 {
 .income-business-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 30px minmax(148px, 1.25fr) repeat(5, minmax(92px, 1fr));
+  grid-template-columns: 30px minmax(138px, 1.2fr) repeat(6, minmax(82px, 1fr));
   gap: 10px;
   align-items: center;
   padding: 10px 11px;
@@ -7807,9 +8270,6 @@ body.v42 {
     border-top: 1px solid #edf0f2;
   }
 
-  .income-business-row > div:last-child {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 900px) {
@@ -7859,6 +8319,16 @@ body.v42 {
 
   .income-result-grid strong {
     font-size: 23px;
+  }
+
+  .income-monthly-yoy {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .income-monthly-yoy-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 }
 

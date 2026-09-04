@@ -1,5 +1,6 @@
 import { createDeepChatController } from "./ai/deep-chat-controller.js?v=20260731a";
 import { AI_MODES, RECOMMENDED_QUESTIONS } from "./config/ai-config.js?v=20260731a";
+import { N1_MAIN_STORES, n1MainStoreKey } from "./config/n1-main-stores.js?v=20260903v51t";
 
 if (window.WATER_HEATER_DATA_READY) {
   try {
@@ -1479,12 +1480,32 @@ if (window.WATER_HEATER_DATA_READY) {
     </div>`;
   }
 
+  function select16N1TrendLabelIndexes(values) {
+    const indexes = new Set();
+    values.forEach((value, index) => {
+      if (Number.isFinite(value) && index % 3 === 0) indexes.add(index);
+    });
+    // Five-day blocks start at the displayed range start; retain all tied peaks.
+    for (let start = 0; start < values.length; start += 5) {
+      const end = Math.min(start + 5, values.length);
+      const validValues = values.slice(start, end).filter(Number.isFinite);
+      if (!validValues.length) continue;
+      const peak = Math.max(...validValues);
+      for (let index = start; index < end; index += 1) {
+        if (values[index] === peak) indexes.add(index);
+      }
+    }
+    const last = values.length - 1;
+    if (last >= 0 && Number.isFinite(values[last])) indexes.add(last);
+    return indexes;
+  }
+
   function render16N1TrendSeriesChart(dates, series, featured = false, metric = "qty") {
     const amountMode = metric === "amount";
     const unit = amountMode ? "万" : "台";
     const formatTrendValue = (value) => amountMode ? formatDecimal(value, 1) : formatInteger(value);
     const width = featured ? 1080 : 300;
-    const height = featured ? 172 : 128;
+    const height = featured ? 108 : 84;
     const pad = { left: featured ? 44 : 26, right: featured ? 14 : 8, top: featured ? 22 : 18, bottom: featured ? 27 : 23 };
     const maxValue = Math.max(1, ...series.values);
     const minValue = Math.min(0, ...series.values);
@@ -1494,10 +1515,11 @@ if (window.WATER_HEATER_DATA_READY) {
     const points = series.values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
     const gridValues = featured ? [0, maxValue / 2, maxValue] : [0, maxValue];
     const grid = gridValues.map((value) => `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}" class="overview-chart-grid"/><text x="${pad.left - 7}" y="${(y(value) + 3).toFixed(1)}" text-anchor="end">${formatTrendValue(value)}</text></g>`).join("");
+    const labelIndexes = select16N1TrendLabelIndexes(series.values);
     const labels = series.values.map((value, index) => {
-      const showLabel = value !== 0 || index === series.values.length - 1;
+      const showLabel = featured || labelIndexes.has(index);
       const labelY = Math.max(8, y(value) - (index % 2 ? 5 : 9));
-      return `<g><circle cx="${x(index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="${featured ? 2.5 : 1.8}" fill="${series.color}"/>${showLabel ? `<text x="${x(index).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="n1-qty-data-label">${formatTrendValue(value)}</text>` : ""}<title>${escapeHtml(`${dates[index]} ${series.name} ${formatTrendValue(value)}${unit}`)}</title></g>`;
+      return `<g data-n1-date="${escapeHtml(dates[index])}" data-n1-value="${value}"><circle cx="${x(index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="${featured ? 2.5 : 1.8}" fill="${series.color}"/>${showLabel ? `<text x="${x(index).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="n1-qty-data-label">${formatTrendValue(value)}</text>` : ""}<title>${escapeHtml(`${dates[index]} ${series.name} ${formatTrendValue(value)}${unit}`)}</title></g>`;
     }).join("");
     const dateIndexes = [...new Set([0, Math.floor((dates.length - 1) / 2), dates.length - 1])];
     const dateLabels = dateIndexes.map((index) => {
@@ -1511,7 +1533,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const average = total / Math.max(1, dates.length);
     return `<article class="n1-qty-trend-card ${featured ? "featured" : ""}" style="--series-color:${series.color}">
       <div class="n1-qty-card-head"><span>${escapeHtml(series.name)}</span><strong>${formatTrendValue(total)}${unit}</strong><small>日均 ${formatDecimal(average, 1)}${unit} · 30天累计</small></div>
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(series.name)}近30天每日销售${amountMode ? "额" : "台量"}趋势">${grid}${dateLabels}${areaPath ? `<path d="${areaPath}" class="n1-qty-feature-area"/>` : ""}<polyline points="${points}" fill="none" stroke="${series.color}" stroke-width="${featured ? 3 : 2.2}" stroke-linejoin="round" stroke-linecap="round"/>${labels}</svg>
+      <div class="n1-trend-plot-scroll"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(series.name)}近30天每日销售${amountMode ? "额" : "台量"}趋势">${grid}${dateLabels}${areaPath ? `<path d="${areaPath}" class="n1-qty-feature-area"/>` : ""}<polyline points="${points}" fill="none" stroke="${series.color}" stroke-width="${featured ? 3 : 2.2}" stroke-linejoin="round" stroke-linecap="round"/>${labels}</svg></div>
     </article>`;
   }
 
@@ -1538,10 +1560,92 @@ if (window.WATER_HEATER_DATA_READY) {
       return { name: item.name, color: colors[index + 1], values: dates.map((date) => metricValue(daily.get(date))) };
     });
     return `<div class="n1-qty-trend-wrap">
-      <div class="n1-qty-trend-heading"><div><strong>${amountMode ? "近30天日销售额" : "近30天日销台量"}</strong><span>${escapeHtml(trendStart)} 至 ${escapeHtml(state.end)} · 总计＋前四渠道 · ${amountMode ? "当日有效销售额（单位：万）" : "标注为当日有效台量"}</span></div><div class="n1-trend-heading-actions"><b>30D</b><button type="button" class="n1-trend-toggle ${amountMode ? "amount-active" : ""}" data-toggle-n1-trend aria-pressed="${amountMode}">${amountMode ? "切换台量" : "切换销售额"}</button></div></div>
+      <div class="n1-qty-trend-heading"><div><strong>${amountMode ? "近30天日销售额" : "近30天日销台量"}</strong><span>${escapeHtml(trendStart)} 至 ${escapeHtml(state.end)} · 总计＋前四渠道 · ${amountMode ? "有效销售额（万）" : "有效台量（台）"} · 总计逐日标注；渠道每3天标注，并保留5天区间最高点及末日</span></div><div class="n1-trend-heading-actions"><b>30D</b><button type="button" class="n1-trend-toggle ${amountMode ? "amount-active" : ""}" data-toggle-n1-trend aria-pressed="${amountMode}">${amountMode ? "切换台量" : "切换销售额"}</button></div></div>
       ${render16N1TrendSeriesChart(dates, totalSeries, true, metric)}
       <div class="n1-qty-channel-grid">${channelSeries.map((series) => render16N1TrendSeriesChart(dates, series, false, metric)).join("")}</div>
     </div>`;
+  }
+
+  function render16N1MonthlyTrajectory() {
+    const [currentYear, currentMonth] = state.end.slice(0, 7).split("-").map(Number);
+    const summarizePeriod = (label, start, end, rowClass = "") => {
+      const rows = overviewRowsForRange(start, end).filter(is16N1);
+      const summary = metricSummary(rows);
+      const storeQty = new Map([...groupRows(rows, n1MainStoreKey)]
+        .map(([key, storeRows]) => [key, metricSummary(storeRows).qty]));
+      const days = Math.max(1, daysInclusive(start, end));
+      return {
+        label,
+        start,
+        end,
+        days,
+        rowClass,
+        summary,
+        storeQty,
+        otherQty: metricSummary(rows.filter((row) => !n1MainStoreKey(row))).qty,
+        dailyQty: summary.qty / days,
+      };
+    };
+    const yearToDate = summarizePeriod("年累", `${currentYear}-01-01`, state.end, "is-ytd");
+    const current = summarizePeriod(`${currentMonth}月`, `${state.end.slice(0, 7)}-01`, state.end, "is-current");
+    const history = Array.from({ length: 4 }, (_, index) => {
+      const cursor = new Date(Date.UTC(currentYear, currentMonth - 5 + index, 1));
+      const start = toIso(cursor);
+      const label = `${cursor.getUTCFullYear() === currentYear ? "" : `${cursor.getUTCFullYear()}年`}${cursor.getUTCMonth() + 1}月`;
+      return summarizePeriod(label, start, monthEndIso(start));
+    });
+    const periods = [yearToDate, ...history, current];
+    const storeColumnClasses = {
+      "jd-self": " n1-group-jd n1-group-start",
+      "jd-second": " n1-group-jd",
+      "jd-pop": " n1-group-jd",
+      "tmall-official": " n1-group-tmall n1-group-start",
+      "tmall-heater": " n1-group-tmall",
+      douyin: " n1-group-douyin n1-group-start",
+    };
+    const volumeMetrics = [
+      { label: "总台量", className: " n1-volume-total", value: (item) => formatInteger(item.summary.qty) },
+      ...N1_MAIN_STORES.map((store) => ({
+        label: store.label,
+        className: storeColumnClasses[store.key],
+        value: (item) => formatInteger(item.storeQty.get(store.key) || 0),
+      })),
+    ];
+    const volumeHeader = `<colgroup><col class="n1-volume-period-col"></colgroup><colgroup span="1"></colgroup><colgroup span="3"></colgroup><colgroup span="2"></colgroup><colgroup span="1"></colgroup>
+      <thead>
+        <tr class="n1-volume-group-row">
+          <th scope="col" rowspan="2" class="n1-month-track-corner">周期</th>
+          <th scope="col" rowspan="2" class="n1-month-track-heading n1-volume-total">总台量</th>
+          <th scope="colgroup" colspan="3" class="n1-month-track-heading n1-group-jd n1-group-start">京东</th>
+          <th scope="colgroup" colspan="2" class="n1-month-track-heading n1-group-tmall n1-group-start">天猫</th>
+          <th scope="colgroup" class="n1-month-track-heading n1-group-douyin n1-group-start">抖音</th>
+        </tr>
+        <tr class="n1-volume-store-row">${N1_MAIN_STORES.map((store) => `<th scope="col" class="n1-month-track-heading${storeColumnClasses[store.key]}">${store.key === "douyin" ? "全部店铺" : escapeHtml(store.label)}</th>`).join("")}</tr>
+      </thead>`;
+    const historyMetrics = [
+      { label: "销量", className: " n1-history-volume", value: (item) => `${formatInteger(item.summary.qty)}台` },
+      { label: "销售额", className: " n1-history-amount n1-history-divider", value: (item) => formatWan(item.summary.amount) },
+      { label: "日销", className: " n1-history-daily n1-history-divider", value: (item) => `${formatDecimal(item.dailyQty, 1)}台/日` },
+      { label: "均价", className: " n1-history-price n1-history-divider", value: (item) => formatCurrency(item.summary.avgPrice) },
+    ];
+    const renderPeriodTable = (items, metrics, className, label, header = "") => `<div class="n1-month-track-scroll"><table class="n1-month-track-table ${className}" aria-label="${escapeHtml(label)}">
+      ${header || `<thead><tr><th scope="col" class="n1-month-track-corner">周期</th>${metrics.map((metric) => `<th scope="col" class="n1-month-track-heading${metric.className || ""}">${escapeHtml(metric.label)}</th>`).join("")}</tr></thead>`}
+      <tbody>${items.map((item) => `<tr class="${item.rowClass}"><th scope="row" class="n1-month-track-label" title="${escapeHtml(`${item.start} 至 ${item.end}`)}">${escapeHtml(item.label)}</th>${metrics.map((metric) => `<td class="n1-month-track-value${metric.className || ""}">${metric.value(item)}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>`;
+    const otherStoreNotes = periods
+      .filter((item) => item.otherQty !== 0)
+      .map((item) => `${item.label}${formatInteger(item.otherQty)}台`);
+    return `<section class="n1-month-trajectory" aria-label="16N1主营店铺销量与历史量价">
+      <div class="n1-month-trajectory-heading">
+        <div><strong>主营店铺销量</strong><span>${currentMonth}月累计 ${formatInteger(current.days)} 天；月份由远及近，历史月份为完整月</span></div><span class="n1-table-unit">单位：台</span>
+      </div>
+      ${renderPeriodTable(periods, volumeMetrics, "n1-main-store-volume-table", "16N1年累及月度主营店铺销量，单位台", volumeHeader)}
+      <p class="n1-month-business-note">总台量为全部店铺有效净销量，负数为退货等冲减；京东POP按源表同名渠道归集（不含POP代销），天猫热旗为七叶枫，抖音沿用原抖音业务部口径、汇总全部店铺。${otherStoreNotes.length ? `六组主营之外另有${escapeHtml(otherStoreNotes.join("、"))}，计入总台量。` : ""}</p>
+      <details class="overview-disclosure n1-history-detail"><summary>历史销量、销售额、日销、均价</summary><div class="overview-disclosure-body">
+        ${renderPeriodTable(history, historyMetrics, "n1-history-price-table", "16N1前四个完整月销量、销售额、日销与均价")}
+        <p class="n1-month-business-note">日销按各月自然日计算，均价按销售额 ÷ 台量计算。</p>
+      </div></details>
+    </section>`;
   }
 
   function render16N1WarRoom(currentRows) {
@@ -1555,9 +1659,13 @@ if (window.WATER_HEATER_DATA_READY) {
     const current = metricSummary(currentRows);
     const year = state.end.slice(0, 4);
     const yearStart = `${year}-01-01`;
-    const yearToDate = metricSummary(overviewRowsForRange(yearStart, state.end).filter(is16N1));
+    const yearRows = overviewRowsForRange(yearStart, state.end);
+    const yearToDate = metricSummary(yearRows.filter(is16N1));
+    const mainStoreYearRows = yearRows.filter((row) => n1MainStoreKey(row));
+    const mainStoreYearAmount = metricSummary(mainStoreYearRows).amount;
+    const mainStoreN1YearAmount = metricSummary(mainStoreYearRows.filter(is16N1)).amount;
+    const yearAmountShare = mainStoreYearAmount !== 0 ? mainStoreN1YearAmount / mainStoreYearAmount : NaN;
     const monthNumber = Number(state.end.slice(5, 7));
-    const currentPeriodTitle = `${year}年${monthNumber}月当月销售数据`;
     const monthDailyQty = current.qty / Math.max(1, daysInclusive(monthStart, state.end));
     const recentStart = shiftDays(state.end, -6);
     const previousEnd = shiftDays(recentStart, -1);
@@ -1606,21 +1714,25 @@ if (window.WATER_HEATER_DATA_READY) {
       <td class="${signClass(item.qtyChange)}">${formatSignedPct(item.qtyChange)}</td>
     </tr>`);
     const kpis = `<div class="n1-summary-stack">
-      <div class="n1-ytd-banner">
-        <div class="n1-ytd-title"><strong>${escapeHtml(year)}年累计销售数据</strong><span>${escapeHtml(yearStart)} 至 ${escapeHtml(state.end)}</span></div>
-        <div class="n1-ytd-metric"><span>累计销售额</span><strong>${formatWan(yearToDate.amount)}</strong></div>
-        <div class="n1-ytd-metric"><span>累计销售台量</span><strong>${formatInteger(yearToDate.qty)}台</strong></div>
-        <div class="n1-ytd-metric"><span>累计均价</span><strong>${formatCurrency(yearToDate.avgPrice)}</strong></div>
+      <div class="n1-overview-row is-ytd" aria-label="16N1年累经营概况">
+        <div class="n1-overview-period"><strong>${escapeHtml(year)}年累计</strong><span>${escapeHtml(yearStart)} 至 ${escapeHtml(state.end)}</span></div>
+        <dl class="n1-overview-metrics">
+          <div><dt>销售额</dt><dd>${formatWan(yearToDate.amount)}</dd></div>
+          <div><dt>台量</dt><dd>${formatInteger(yearToDate.qty)}台</dd></div>
+          <div data-main-store-share data-numerator="${mainStoreN1YearAmount}" data-denominator="${mainStoreYearAmount}" title="${escapeHtml(`六组主营店铺内16N1年累有效销售额 ${formatCurrency(mainStoreN1YearAmount)} ÷ 同六组店铺全部产品年累有效销售额 ${formatCurrency(mainStoreYearAmount)}（${yearStart} 至 ${state.end}）；店铺范围与下方表格六列一致，不含其他店铺。`)}"><dt>主营店铺销额内占</dt><dd>${formatRate(yearAmountShare)}</dd></div>
+          <div><dt>均价</dt><dd>${formatCurrency(yearToDate.avgPrice)}</dd></div>
+        </dl>
       </div>
-      <div class="n1-month-summary">
-        <div class="n1-period-heading"><strong>${escapeHtml(currentPeriodTitle)}</strong><span>${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</span></div>
-        <div class="n1-kpi-grid">
-          <article><span>16N1销售额</span><strong>${formatWan(current.amount)}</strong><small>当月累计</small></article>
-          <article><span>16N1台量</span><strong>${formatInteger(current.qty)}台</strong><small>当月累计</small></article>
-          <article><span>${monthNumber}月日销</span><strong>${formatDecimal(monthDailyQty, 1)}台/日</strong><small>${formatInteger(current.qty)}台 · ${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</small></article>
-          <article><span>${monthNumber}月均价</span><strong>${formatCurrency(current.avgPrice)}</strong><small>${formatWan(current.amount)} · ${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</small></article>
-        </div>
+      <div class="n1-overview-row is-current" aria-label="16N1当月经营概况">
+        <div class="n1-overview-period"><strong>${monthNumber}月 <b>当月 · 累计 ${formatInteger(daysInclusive(monthStart, state.end))} 天</b></strong><span>${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</span></div>
+        <dl class="n1-overview-metrics">
+          <div><dt>销售额</dt><dd>${formatWan(current.amount)}</dd></div>
+          <div><dt>台量</dt><dd>${formatInteger(current.qty)}台</dd></div>
+          <div><dt>日销</dt><dd>${formatDecimal(monthDailyQty, 1)}台/日</dd></div>
+          <div><dt>均价</dt><dd>${formatCurrency(current.avgPrice)}</dd></div>
+        </dl>
       </div>
+      ${render16N1MonthlyTrajectory()}
     </div>`;
     const charts = render16N1RecentTrends();
     const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看16N1店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>按当前所选周期16N1有效销售额展示前5店铺，其余合并为其他店铺；近7日与前7日沿用同一批店铺</span></div><b class="${signClass(recentQtyChange)}">近7日 ${formatSignedPct(recentQtyChange)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
@@ -2170,7 +2282,7 @@ if (window.WATER_HEATER_DATA_READY) {
         ${panel(`${monthLabel}店铺经营`, "电商整体＋销售前6店铺＋其他；销售、同比和形态结构均为当月口径", renderOverviewStoreTable(monthCurrentRows, monthPriorRows), "overview-store-mix", { className: "overview-span-2" })}
       </section>`;
     const monitoringBody = `<section class="overview-content-grid">
-        ${panel("16N1销售作战视图", `年累与${monthLabel}规模置顶；${monthNumber}月日销、均价与近30天前四渠道趋势单独标记`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
+        ${panel("16N1销售作战视图", `截至 ${state.end} · 年累与当月概况、主营店铺销量及近30天趋势`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
         ${seriesPanel}
         ${panel("价格监控与当月TOP10", `价格结论截至 ${DATA.meta.priceMonitorDateMax || "-"}；型号TOP10固定使用${monthLabel}数据`, renderFocusedPriceExecutive(monthCurrentRows, monthPriorRows), "overview-competitive-price", { className: "overview-span-2" })}
       </section>`;
@@ -2800,7 +2912,13 @@ if (window.WATER_HEATER_DATA_READY) {
     ]);
     const line = `<polyline points="${points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="#267364" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>`;
     const dots = points.map(([x, y, value]) => `<circle cx="${x}" cy="${y}" r="4.5" fill="#267364" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y - 12}" text-anchor="middle" fill="#267364" font-size="11" font-weight="700">${formatRate(value)}</text>`).join("");
-    return `<div class="income-chart-legend"><span class="sales">销售</span><span class="income">不含税收入</span><span class="rate">累计销售到收入转化率</span></div><div class="chart-scroll"><svg class="income-monthly-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="销售、不含税收入与累计销售到收入转化率月度趋势">${ticks}${bars}${line}${dots}<text x="${width - pad.right + 10}" y="${pad.top + 4}" fill="#68707d" font-size="11">右轴 ${formatRate(rateCeiling)}</text></svg></div>`;
+    const yoyCards = months.map((item) => `<article>
+      <span>${Number(item.month.slice(5))}月收入</span>
+      <strong>${formatWan(item.income)}</strong>
+      <small>同期 ${Number.isFinite(item.priorIncome) ? formatWan(item.priorIncome) : "-"}</small>
+      <em class="${signClass(item.incomeYoY)}">同比 ${formatSignedPct(item.incomeYoY)} · ${formatSignedWan(item.incomeDelta)}</em>
+    </article>`).join("");
+    return `<div class="income-chart-legend"><span class="sales">销售</span><span class="income">不含税收入</span><span class="rate">累计销售到收入转化率</span></div><div class="chart-scroll"><svg class="income-monthly-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="销售、不含税收入与累计销售到收入转化率月度趋势">${ticks}${bars}${line}${dots}<text x="${width - pad.right + 10}" y="${pad.top + 4}" fill="#68707d" font-size="11">右轴 ${formatRate(rateCeiling)}</text></svg></div><div class="income-monthly-yoy-head"><strong>月度收入同比</strong><span>本期不含税收入 / 上年同期 / 同比与净增减</span></div><div class="income-monthly-yoy">${yoyCards}</div>`;
   }
 
   function renderIncome() {
@@ -2832,30 +2950,41 @@ if (window.WATER_HEATER_DATA_READY) {
       const rows = currentIncomeRows.filter((row) => row.month === month);
       const incomeAmount = rows.reduce((sum, row) => sum + Number(row.income || 0), 0);
       const incomeTaxEq = rows.reduce((sum, row) => sum + Number(row.incomeTaxEq || 0), 0);
+      const priorMonth = `${Number(month.slice(0, 4)) - 1}-${month.slice(5)}`;
+      const priorIncomeAmount = priorIncomeRows.filter((row) => row.month === priorMonth).reduce((sum, row) => sum + Number(row.income || 0), 0);
       cumulativeSales += salesAmount;
       cumulativeIncome += incomeAmount;
-      return { month, sales: salesAmount, income: incomeAmount, incomeTaxEq, cumulativeFinancialRate: cumulativeSales ? cumulativeIncome / cumulativeSales : NaN };
+      return {
+        month,
+        sales: salesAmount,
+        income: incomeAmount,
+        incomeTaxEq,
+        priorIncome: priorIncomeAmount,
+        incomeYoY: ratioChange(incomeAmount, priorIncomeAmount),
+        incomeDelta: incomeAmount - priorIncomeAmount,
+        cumulativeFinancialRate: cumulativeSales ? cumulativeIncome / cumulativeSales : NaN,
+      };
     });
 
     const businessRanking = businessItems.map((item) => {
-      const gapRate = Number.isFinite(item.rateChange) ? Math.max(0, -item.rateChange) : NaN;
-      return { ...item, gapAmount: Number.isFinite(gapRate) ? item.sales * gapRate : NaN };
+      return { ...item, incomeDelta: item.hasPriorIncome ? item.income - item.prior.income : NaN };
     }).sort((a, b) => {
-      const aGap = Number.isFinite(a.gapAmount) ? a.gapAmount : -1;
-      const bGap = Number.isFinite(b.gapAmount) ? b.gapAmount : -1;
-      return bGap - aGap || b.sales - a.sales;
+      const aDelta = Number.isFinite(a.incomeDelta) ? a.incomeDelta : Infinity;
+      const bDelta = Number.isFinite(b.incomeDelta) ? b.incomeDelta : Infinity;
+      return aDelta - bDelta || b.income - a.income;
     });
     const businessRows = businessRanking.map((item, index) => {
-      const status = !Number.isFinite(item.rateChange) ? "无同期" : item.rateChange >= .02 ? "转化改善" : item.rateChange <= -.02 ? "转化下滑" : "转化基本稳定";
-      const statusClass = status === "转化下滑" ? "risk" : status === "转化改善" ? "steady" : "watch";
+      const status = !Number.isFinite(item.incomeYoY) ? "无同期" : item.incomeYoY >= .05 ? "收入增长" : item.incomeYoY <= -.05 ? "收入下滑" : "收入基本持平";
+      const statusClass = status === "收入下滑" ? "risk" : status === "收入增长" ? "steady" : "watch";
       return `<article class="income-business-row">
         <span class="income-rank-index">${index + 1}</span>
         <div class="income-business-name"><strong>${escapeHtml(item.name)}</strong><span class="income-judgment ${statusClass}">${escapeHtml(status)}</span></div>
+        <div><small>本期收入</small><strong>${formatWan(item.income)}</strong></div>
+        <div><small>同期收入</small><strong>${item.hasPriorIncome ? formatWan(item.prior.income) : "-"}</strong></div>
+        <div><small>收入同比</small><strong class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</strong></div>
+        <div><small>收入净增减</small><strong class="${signClass(item.incomeDelta)}">${formatSignedWan(item.incomeDelta)}</strong></div>
         <div><small>本期转化率</small><strong>${formatRate(item.financialRate)}</strong></div>
-        <div><small>同比变化</small><strong class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</strong></div>
-        <div><small>不含税收入</small><strong>${formatWan(item.income)}</strong></div>
-        <div><small>销售规模</small><strong>${formatWan(item.sales)}</strong></div>
-        <div><small>转化缺口估算</small><strong class="${Number.isFinite(item.gapAmount) && item.gapAmount > 0 ? "negative" : "neutral"}">${Number.isFinite(item.gapAmount) ? formatWan(item.gapAmount) : "-"}</strong></div>
+        <div><small>转化同比</small><strong class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</strong></div>
       </article>`;
     }).join("");
 
@@ -2879,24 +3008,25 @@ if (window.WATER_HEATER_DATA_READY) {
       topChannels.push(other);
     }
     const channelViews = topChannels.map((item) => {
-      const judgment = Number.isFinite(item.rateChange) && item.rateChange <= -.05
-        ? "同比转化下滑"
-        : item.financialRate >= .8
-          ? "转化较稳"
-          : item.financialRate >= .6
-            ? "关注转化"
-            : "重点修复";
-      const judgmentClass = judgment === "重点修复" || judgment === "同比转化下滑" ? "risk" : judgment === "转化较稳" ? "steady" : "watch";
+      const judgment = !Number.isFinite(item.incomeYoY)
+        ? "无同期"
+        : item.incomeYoY >= .05
+          ? "收入增长"
+          : item.incomeYoY <= -.05
+            ? "收入下滑"
+            : "收入基本持平";
+      const judgmentClass = judgment === "收入下滑" ? "risk" : judgment === "收入增长" ? "steady" : "watch";
       const priorSalesCell = item.hasPriorSales ? formatWan(item.prior.sales) : "-";
       const priorIncomeCell = item.hasPriorIncome ? formatWan(item.prior.income) : "-";
       const priorRateCell = item.hasPriorSales && item.hasPriorIncome ? formatRate(item.prior.financialRate) : "-";
-      return { item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell };
+      const incomeDelta = item.hasPriorIncome ? item.income - item.prior.income : NaN;
+      return { item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell, incomeDelta };
     });
-    const channelDiagnosticRows = channelViews.map(({ item, judgment, judgmentClass }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatRate(item.financialRate)}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td>${formatWan(item.income)}</td><td>${formatWan(item.sales)}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
-    const channelFullRows = channelViews.map(({ item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatWan(item.sales)}</td><td>${priorSalesCell}</td><td>${formatWan(item.income)}</td><td>${priorIncomeCell}</td><td>${formatRate(item.financialRate)}</td><td>${priorRateCell}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
-    const channelCards = channelViews.map(({ item, judgment, judgmentClass }) => `<article class="income-channel-card">
+    const channelDiagnosticRows = channelViews.map(({ item, judgment, judgmentClass, priorIncomeCell, incomeDelta }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatWan(item.income)}</td><td>${priorIncomeCell}</td><td class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</td><td class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</td><td>${formatRate(item.financialRate)}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
+    const channelFullRows = channelViews.map(({ item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell, incomeDelta }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatWan(item.sales)}</td><td>${priorSalesCell}</td><td class="${signClass(item.salesYoY)}">${formatSignedPct(item.salesYoY)}</td><td>${formatWan(item.income)}</td><td>${priorIncomeCell}</td><td class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</td><td class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</td><td>${formatRate(item.financialRate)}</td><td>${priorRateCell}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
+    const channelCards = channelViews.map(({ item, judgment, judgmentClass, priorIncomeCell, incomeDelta }) => `<article class="income-channel-card">
       <div class="income-channel-card-head"><strong>${escapeHtml(item.name)}</strong><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></div>
-      <dl><div><dt>本期转化率</dt><dd>${formatRate(item.financialRate)}</dd></div><div><dt>同比变化</dt><dd class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</dd></div><div><dt>不含税收入</dt><dd>${formatWan(item.income)}</dd></div><div><dt>销售规模</dt><dd>${formatWan(item.sales)}</dd></div></dl>
+      <dl><div><dt>本期收入</dt><dd>${formatWan(item.income)}</dd></div><div><dt>同期收入</dt><dd>${priorIncomeCell}</dd></div><div><dt>收入同比</dt><dd class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</dd></div><div><dt>收入净增减</dt><dd class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</dd></div><div><dt>本期转化率</dt><dd>${formatRate(item.financialRate)}</dd></div><div><dt>转化同比</dt><dd class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</dd></div></dl>
     </article>`).join("");
 
     return `<div class="income-page">
@@ -2912,15 +3042,15 @@ if (window.WATER_HEATER_DATA_READY) {
       </nav>
       <section class="income-result-grid" id="income-result-layer">
         <article><small>累计销售</small><strong>${formatWan(current.sales)}</strong><span class="${signClass(salesYoY)}">同比 ${formatSignedPct(salesYoY)}</span></article>
-        <article><small>不含税收入</small><strong>${formatWan(current.income)}</strong><span class="${signClass(incomeYoY)}">同比 ${formatSignedPct(incomeYoY)}</span></article>
-        <article><small>销售到收入转化率</small><strong>${formatRate(current.financialRate)}</strong><span class="${signClass(financialRateChange)}">同比 ${Number.isFinite(financialRateChange) ? formatSignedPoint(financialRateChange).replace("pct", "pp") : "-"}</span></article>
+        <article><small>累计不含税收入</small><strong>${formatWan(current.income)}</strong><span>同期 ${formatWan(prior.income)}</span><span class="${signClass(incomeYoY)}">同比 ${formatSignedPct(incomeYoY)} · ${formatSignedWan(current.income - prior.income)}</span></article>
+        <article><small>销售到收入转化率</small><strong>${formatRate(current.financialRate)}</strong><span>同期 ${formatRate(prior.financialRate)}</span><span class="${signClass(financialRateChange)}">同比 ${Number.isFinite(financialRateChange) ? formatSignedPoint(financialRateChange).replace("pct", "pp") : "-"}</span></article>
         <article class="income-gap-card"><small>转化缺口参考</small><strong>${Number.isFinite(conversionGapAmount) ? formatWan(conversionGapAmount) : "-"}</strong><span>按本期销售 × 同期转化率差</span></article>
       </section>
       <details class="income-method-note"><summary>口径与时滞说明</summary><div><p><strong>销售到收入转化率</strong>＝不含税收入 ÷ 含税销售额。</p><p>${escapeHtml(INCOME_DATA.meta.timingNote)}</p><p>“转化缺口参考”仅是同口径估算，不等同于可直接追回的实际收入。</p></div></details>
       <section class="content-grid income-content-grid">
-        ${panel("② 销售到收入月度节奏", "柱形看销售与不含税收入，折线看累计转化率；单月受审核时滞影响可超过100%", renderIncomeMonthlyChart(monthly), "income-monthly-trend", { className: "span-2" })}
-        ${panel("③ 业务部定位", "按转化缺口参考从高到低排列；同时对照转化率、收入和销售规模", `<div class="income-business-ranking">${businessRows}</div>`, "income-business-drivers", { className: "span-2" })}
-        ${panel("④ 渠道落点", "销售前8渠道＋其他；主视图优先显示转化、变化、收入、销售和判断", `<div class="income-channel-desktop">${table(["渠道", "本期转化率", "同比变化", "本期收入", "本期销售", "经营判断"], channelDiagnosticRows, 820)}</div><div class="income-channel-mobile">${channelCards}</div><details class="income-detail-disclosure"><summary>查看同期与完整口径</summary>${table(["渠道", "本期销售", "同期销售", "本期收入", "同期收入", "本期转化率", "同期转化率", "同比变化", "经营判断"], channelFullRows, 1180)}</details>`, "income-channel-conversion", { className: "span-2" })}
+        ${panel("② 销售到收入月度节奏", "柱形看销售与收入、折线看累计转化率；下方逐月对照同期收入、同比和净增减", renderIncomeMonthlyChart(monthly), "income-monthly-trend", { className: "span-2" })}
+        ${panel("③ 业务部收入增减", "按收入净增减从低到高排列；先看本期、同期、同比和净增减，再用转化率解释", `<div class="income-business-ranking">${businessRows}</div>`, "income-business-drivers", { className: "span-2" })}
+        ${panel("④ 渠道收入落点", "销售前8渠道＋其他；主视图先看收入同期增减，再看转化率及其同比变化", `<div class="income-channel-desktop">${table(["渠道", "本期收入", "同期收入", "收入同比", "收入净增减", "本期转化率", "转化同比", "经营判断"], channelDiagnosticRows, 1020)}</div><div class="income-channel-mobile">${channelCards}</div><details class="income-detail-disclosure"><summary>查看销售与完整口径</summary>${table(["渠道", "本期销售", "同期销售", "销售同比", "本期收入", "同期收入", "收入同比", "收入净增减", "本期转化率", "同期转化率", "转化同比", "经营判断"], channelFullRows, 1440)}</details>`, "income-channel-conversion", { className: "span-2" })}
       </section>
     </div>`;
   }
