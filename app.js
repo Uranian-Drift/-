@@ -1051,6 +1051,12 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderOverviewStoreTable(currentRows, priorRows) {
     const leadingStores = topStoreNames(currentRows);
     const leadingSet = new Set(leadingStores);
+    const isJdSelfOperatedStore = (row) => {
+      const name = storeValue(row);
+      return name === "北京京东世纪贸易有限公司" || name.includes("方太自营二店");
+    };
+    const jdSelfOperatedCurrentRows = currentRows.filter(isJdSelfOperatedStore);
+    const jdSelfOperatedPriorRows = priorRows.filter(isJdSelfOperatedStore);
     const storeBucket = (row) => leadingSet.has(storeValue(row)) ? storeValue(row) : "其他店铺";
     const currentMap = groupRows(currentRows, storeBucket);
     const priorMap = groupRows(priorRows, storeBucket);
@@ -1106,10 +1112,11 @@ if (window.WATER_HEATER_DATA_READY) {
     };
     const rows = [
       buildStoreRow("电商整体", currentRows, priorRows, "overview-total-row"),
+      buildStoreRow("京东自营＋自营二店", jdSelfOperatedCurrentRows, jdSelfOperatedPriorRows, "channel-combined-row"),
       ...order.map((name) => buildStoreRow(name, currentMap.get(name) || [], priorMap.get(name) || [])),
     ];
-    return `${table(["电商整体＋前6店铺＋其他", "有效销售 / 同比", "蝶翼 / 同比", "平衡机 / 同比", "其他产品 / 同比", "经营状态"], rows, 620)}
-      <p class="overview-channel-note">首行为电商整体；店铺按当前汇报周期有效销售额取前6，其余合并为“其他店铺”；同期严格沿用同一批店铺。</p>`;
+    return `${table(["整体＋京东组合＋前6店铺＋其他", "有效销售 / 同比", "蝶翼 / 同比", "平衡机 / 同比", "其他产品 / 同比", "经营状态"], rows, 620)}
+      <p class="overview-channel-note">首行为电商整体，第二行为京东自营与自营二店组合；店铺按当前汇报周期有效销售额取前6，其余合并为“其他店铺”；同期严格沿用同一批店铺。</p>`;
   }
 
   function buildOverviewShapeStats(currentRows, priorRows, monthStart) {
@@ -1334,7 +1341,7 @@ if (window.WATER_HEATER_DATA_READY) {
   const overviewStoreAlias = (name) => {
     const value = String(name || "").trim();
     if (value === "方太官方旗舰店（天猫）") return "天猫官旗";
-    if (value.includes("方太自营二店")) return "京东热水器自营";
+    if (value.includes("方太自营二店")) return "自营二店";
     if (value.includes("北京京东世纪贸易有限公司")) return "京东自营";
     if (value.includes("七叶枫") && value.includes("天猫")) return "天猫热旗·七叶枫";
     if (value.includes("河南信维")) return "京代POP·河南信维";
@@ -2279,7 +2286,7 @@ if (window.WATER_HEATER_DATA_READY) {
       <details class="overview-disclosure overview-method-details"><summary>查看目标与计划节奏口径</summary><div class="overview-disclosure-body">${renderMonthlyTargetPlan(anchorYear, targetSource)}</div></details>`;
     const seriesPanel = panel(`${monthLabel}重点系列`, "系列销售、台量、同比和主力店铺均为当月口径；完整店铺明细按需展开", `<div class="overview-series-summary-grid">${renderSeriesExecutiveSummary(monthCurrentRows, monthPriorRows, is18M2, is18M2, "18M2系列", "18M2 / 18M2Pro / 18M2Max")}${renderSeriesExecutiveSummary(monthCurrentRows, monthPriorRows, is16M1, is16M1Prior, "16M1系列", "本期 16M1 / 16M1Pro / 16M1L · 同期 02-MS16T1 / MS16T2")}</div>`, "overview-series-summary", { className: "overview-span-2" });
     const monthlyBreakdownBody = `<section class="overview-content-grid">
-        ${panel(`${monthLabel}店铺经营`, "电商整体＋销售前6店铺＋其他；销售、同比和形态结构均为当月口径", renderOverviewStoreTable(monthCurrentRows, monthPriorRows), "overview-store-mix", { className: "overview-span-2" })}
+        ${panel(`${monthLabel}店铺经营`, "电商整体＋京东自营组合＋销售前6店铺＋其他；销售、同比和形态结构均为当月口径", renderOverviewStoreTable(monthCurrentRows, monthPriorRows), "overview-store-mix", { className: "overview-span-2" })}
       </section>`;
     const monitoringBody = `<section class="overview-content-grid">
         ${panel("16N1销售作战视图", `截至 ${state.end} · 年累与当月概况、主营店铺销量及近30天趋势`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
@@ -3074,8 +3081,18 @@ if (window.WATER_HEATER_DATA_READY) {
       yoy: ratioChange(currentTotal.amount, priorTotal.amount),
       prior: priorTotal,
     };
+    const jdSelfOperatedChannels = new Set(["京东自营", "京东自营代销"]);
+    const jdSelfOperatedCurrent = metricSummary(currentRows.filter((row) => jdSelfOperatedChannels.has(dimValue(row, "channel"))));
+    const jdSelfOperatedPrior = metricSummary(priorRows.filter((row) => jdSelfOperatedChannels.has(dimValue(row, "channel"))));
+    const jdSelfOperatedItem = {
+      name: "京东自营＋自营二店",
+      ...jdSelfOperatedCurrent,
+      yoy: ratioChange(jdSelfOperatedCurrent.amount, jdSelfOperatedPrior.amount),
+      prior: jdSelfOperatedPrior,
+    };
     const rows = [
       channelRow(totalItem, "highlight-row"),
+      channelRow(jdSelfOperatedItem, "channel-combined-row"),
       ...items.map((item) => channelRow(item)),
     ];
     const businessRows = businessItems.map((item, index) => {
@@ -3088,7 +3105,7 @@ if (window.WATER_HEATER_DATA_READY) {
     return `<p class="availability-note">当前数据没有成本字段，因此不推算毛利率；同期口径为上年同日期区间。</p>
       <section class="content-grid">
         ${panel("业务部经营排行", "按销售额从高到低排列；展示业务规模、同比、量价和销售指数", table(["排名", "业务部", "销售额", "业务占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], businessRows, 1320), "business-efficiency-ranking", { className: "span-2" })}
-        ${panel("渠道经营效率", "渠道贡献、同期销售与价格指标均来自有效销售数据", table(["渠道", "销售额", "渠道占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], rows, 1160), "channel-efficiency", { className: "span-2" })}
+        ${panel("渠道经营效率", "渠道贡献、同期销售与价格指标均来自有效销售数据；组合行汇总京东自营与自营二店", table(["渠道", "销售额", "渠道占比", "同期销售", "销售同比", "台量", "均价", "同期均价", "均价同比", "销售指数", "指数净值差"], rows, 1160), "channel-efficiency", { className: "span-2" })}
       </section>`;
   }
 

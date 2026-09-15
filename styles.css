@@ -1648,6 +1648,12 @@ h1 {
   background: rgba(177, 18, 38, 0.08);
 }
 
+.data-table tbody tr.channel-combined-row td {
+  color: #205d78;
+  font-weight: 800;
+  background: rgba(47, 119, 151, 0.09);
+}
+
 .search-row {
   display: flex;
   gap: 8px;
@@ -3370,6 +3376,12 @@ body.v42 {
 .v42 .data-table tbody tr.highlight-row td:first-child {
   color: var(--red-deep);
   background: #fdf0f1;
+}
+
+.v42 .data-table tbody tr.channel-combined-row td,
+.v42 .data-table tbody tr.channel-combined-row td:first-child {
+  color: #205d78;
+  background: #eef6f9;
 }
 
 .v42 .data-table th.table-cell-text,
