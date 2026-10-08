@@ -840,7 +840,8 @@ if (window.WATER_HEATER_DATA_READY) {
 
   const overviewRowsForRange = (start, end) => salesForRange(start, end, false, SALES_FILTER_KEYS);
   const modelText = (row) => `${row.product?.name || ""} ${row.product?.code || ""}`.toUpperCase().replaceAll(" ", "");
-  const is16N1 = (row) => modelText(row).includes("16N1");
+  // N 系列口径：16N1 与 16N1MAX 均纳入。
+  const isNSeries = (row) => modelText(row).includes("16N1");
   const is18M2 = (row) => modelText(row).includes("18M2");
   const is16M1 = (row) => modelText(row).includes("16M1");
   const is16M1Prior = (row) => {
@@ -1427,7 +1428,7 @@ if (window.WATER_HEATER_DATA_READY) {
       : "";
     return `<div class="n1-chart-card">
       <div class="n1-chart-title"><div><strong>累计有效销售 vs 计划节奏</strong><span>实际线高于计划线表示进度领先</span></div><div class="n1-inline-legend"><span class="actual">累计实际</span><span class="target">计划应达</span></div></div>
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="16N1累计有效销售与计划节奏对比">${ticks}${xLabels}<path d="${areaPath}" class="n1-actual-area"/><path d="${linePath(targetCumulative)}" class="n1-target-line"/><path d="${linePath(actualCumulative)}" class="n1-actual-line"/>${targetDots}${actualDots}</svg>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="N系列累计有效销售与计划节奏对比">${ticks}${xLabels}<path d="${areaPath}" class="n1-actual-area"/><path d="${linePath(targetCumulative)}" class="n1-target-line"/><path d="${linePath(actualCumulative)}" class="n1-actual-line"/>${targetDots}${actualDots}</svg>
     </div>`;
   }
 
@@ -1483,7 +1484,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const legend = series.map((item) => `<span><i style="background:${item.color}"></i>${escapeHtml(overviewStoreAlias(item.name))}</span>`).join("");
     return `<div class="n1-chart-card">
       <div class="n1-chart-title"><div><strong>分日有效台量与店铺贡献</strong><span>台量为销售数量净值，负数代表退货冲减；折线为7日移动平均</span></div><div class="n1-store-legend">${legend}<span class="moving"><i></i>7日台量均线</span></div></div>
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="16N1分日有效台量、店铺贡献与7日移动平均">${ticks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}" class="n1-zero-line"/>${xLabels}${bars}<polyline points="${averagePoints}" class="n1-moving-line"/></svg>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="N系列分日有效台量、店铺贡献与7日移动平均">${ticks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}" class="n1-zero-line"/>${xLabels}${bars}<polyline points="${averagePoints}" class="n1-moving-line"/></svg>
     </div>`;
   }
 
@@ -1549,7 +1550,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const amountMode = metric === "amount";
     const trendStart = shiftDays(state.end, -29);
     const dates = isoDateRange(trendStart, state.end);
-    const rows = overviewRowsForRange(trendStart, state.end).filter(is16N1);
+    const rows = overviewRowsForRange(trendStart, state.end).filter(isNSeries);
     const dailyTotal = groupRows(rows, (row) => row.date);
     const channelGroups = groupRows(rows, (row) => dimValue(row, "channel"));
     const topChannels = [...channelGroups.entries()]
@@ -1576,7 +1577,7 @@ if (window.WATER_HEATER_DATA_READY) {
   function render16N1MonthlyTrajectory() {
     const [currentYear, currentMonth] = state.end.slice(0, 7).split("-").map(Number);
     const summarizePeriod = (label, start, end, rowClass = "") => {
-      const rows = overviewRowsForRange(start, end).filter(is16N1);
+      const rows = overviewRowsForRange(start, end).filter(isNSeries);
       const summary = metricSummary(rows);
       const storeQty = new Map([...groupRows(rows, n1MainStoreKey)]
         .map(([key, storeRows]) => [key, metricSummary(storeRows).qty]));
@@ -1642,14 +1643,14 @@ if (window.WATER_HEATER_DATA_READY) {
     const otherStoreNotes = periods
       .filter((item) => item.otherQty !== 0)
       .map((item) => `${item.label}${formatInteger(item.otherQty)}台`);
-    return `<section class="n1-month-trajectory" aria-label="16N1主营店铺销量与历史量价">
+    return `<section class="n1-month-trajectory" aria-label="N系列主营店铺销量与历史量价">
       <div class="n1-month-trajectory-heading">
         <div><strong>主营店铺销量</strong><span>${currentMonth}月累计 ${formatInteger(current.days)} 天；月份由远及近，历史月份为完整月</span></div><span class="n1-table-unit">单位：台</span>
       </div>
-      ${renderPeriodTable(periods, volumeMetrics, "n1-main-store-volume-table", "16N1年累及月度主营店铺销量，单位台", volumeHeader)}
+      ${renderPeriodTable(periods, volumeMetrics, "n1-main-store-volume-table", "N系列年累及月度主营店铺销量，单位台", volumeHeader)}
       <p class="n1-month-business-note">总台量为全部店铺有效净销量，负数为退货等冲减；京东POP按源表同名渠道归集（不含POP代销），天猫热旗为七叶枫，抖音沿用原抖音业务部口径、汇总全部店铺。${otherStoreNotes.length ? `六组主营之外另有${escapeHtml(otherStoreNotes.join("、"))}，计入总台量。` : ""}</p>
       <details class="overview-disclosure n1-history-detail"><summary>历史销量、销售额、日销、均价</summary><div class="overview-disclosure-body">
-        ${renderPeriodTable(history, historyMetrics, "n1-history-price-table", "16N1前四个完整月销量、销售额、日销与均价")}
+        ${renderPeriodTable(history, historyMetrics, "n1-history-price-table", "N系列前四个完整月销量、销售额、日销与均价")}
         <p class="n1-month-business-note">日销按各月自然日计算，均价按销售额 ÷ 台量计算。</p>
       </div></details>
     </section>`;
@@ -1661,23 +1662,23 @@ if (window.WATER_HEATER_DATA_READY) {
     const dailyMap = groupRows(currentRows, (row) => row.date);
     const actualDaily = dates.map((day) => metricSummary(dailyMap.get(day) || []).amount);
     if (!dates.length || actualDaily.every((value) => value === 0)) {
-      return '<div class="empty-state"><div class="empty-state-inner"><h2>当前周期无16N1销售</h2><p>调整时间范围后再查看。</p></div></div>';
+      return '<div class="empty-state"><div class="empty-state-inner"><h2>当前周期无N系列销售</h2><p>调整时间范围后再查看。</p></div></div>';
     }
     const current = metricSummary(currentRows);
     const year = state.end.slice(0, 4);
     const yearStart = `${year}-01-01`;
     const yearRows = overviewRowsForRange(yearStart, state.end);
-    const yearToDate = metricSummary(yearRows.filter(is16N1));
+    const yearToDate = metricSummary(yearRows.filter(isNSeries));
     const mainStoreYearRows = yearRows.filter((row) => n1MainStoreKey(row));
     const mainStoreYearAmount = metricSummary(mainStoreYearRows).amount;
-    const mainStoreN1YearAmount = metricSummary(mainStoreYearRows.filter(is16N1)).amount;
+    const mainStoreN1YearAmount = metricSummary(mainStoreYearRows.filter(isNSeries)).amount;
     const yearAmountShare = mainStoreYearAmount !== 0 ? mainStoreN1YearAmount / mainStoreYearAmount : NaN;
     const monthNumber = Number(state.end.slice(5, 7));
     const monthDailyQty = current.qty / Math.max(1, daysInclusive(monthStart, state.end));
     const recentStart = shiftDays(state.end, -6);
     const previousEnd = shiftDays(recentStart, -1);
     const previousStart = shiftDays(previousEnd, -6);
-    const comparisonRows = overviewRowsForRange(previousStart, state.end).filter(is16N1);
+    const comparisonRows = overviewRowsForRange(previousStart, state.end).filter(isNSeries);
     const recentRows = comparisonRows.filter((row) => row.date >= recentStart && row.date <= state.end);
     const previousRows = comparisonRows.filter((row) => row.date >= previousStart && row.date <= previousEnd);
     const recent = metricSummary(recentRows);
@@ -1721,16 +1722,16 @@ if (window.WATER_HEATER_DATA_READY) {
       <td class="${signClass(item.qtyChange)}">${formatSignedPct(item.qtyChange)}</td>
     </tr>`);
     const kpis = `<div class="n1-summary-stack">
-      <div class="n1-overview-row is-ytd" aria-label="16N1年累经营概况">
+      <div class="n1-overview-row is-ytd" aria-label="N系列年累经营概况">
         <div class="n1-overview-period"><strong>${escapeHtml(year)}年累计</strong><span>${escapeHtml(yearStart)} 至 ${escapeHtml(state.end)}</span></div>
         <dl class="n1-overview-metrics">
           <div><dt>销售额</dt><dd>${formatWan(yearToDate.amount)}</dd></div>
           <div><dt>台量</dt><dd>${formatInteger(yearToDate.qty)}台</dd></div>
-          <div data-main-store-share data-numerator="${mainStoreN1YearAmount}" data-denominator="${mainStoreYearAmount}" title="${escapeHtml(`六组主营店铺内16N1年累有效销售额 ${formatCurrency(mainStoreN1YearAmount)} ÷ 同六组店铺全部产品年累有效销售额 ${formatCurrency(mainStoreYearAmount)}（${yearStart} 至 ${state.end}）；店铺范围与下方表格六列一致，不含其他店铺。`)}"><dt>主营店铺销额内占</dt><dd>${formatRate(yearAmountShare)}</dd></div>
+          <div data-main-store-share data-numerator="${mainStoreN1YearAmount}" data-denominator="${mainStoreYearAmount}" title="${escapeHtml(`六组主营店铺内N系列（16N1＋16N1MAX）年累有效销售额 ${formatCurrency(mainStoreN1YearAmount)} ÷ 同六组店铺全部产品年累有效销售额 ${formatCurrency(mainStoreYearAmount)}（${yearStart} 至 ${state.end}）；店铺范围与下方表格六列一致，不含其他店铺。`)}"><dt>主营店铺销额内占</dt><dd>${formatRate(yearAmountShare)}</dd></div>
           <div><dt>均价</dt><dd>${formatCurrency(yearToDate.avgPrice)}</dd></div>
         </dl>
       </div>
-      <div class="n1-overview-row is-current" aria-label="16N1当月经营概况">
+      <div class="n1-overview-row is-current" aria-label="N系列当月经营概况">
         <div class="n1-overview-period"><strong>${monthNumber}月 <b>当月 · 累计 ${formatInteger(daysInclusive(monthStart, state.end))} 天</b></strong><span>${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</span></div>
         <dl class="n1-overview-metrics">
           <div><dt>销售额</dt><dd>${formatWan(current.amount)}</dd></div>
@@ -1742,7 +1743,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ${render16N1MonthlyTrajectory()}
     </div>`;
     const charts = render16N1RecentTrends();
-    const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看16N1店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>按当前所选周期16N1有效销售额展示前5店铺，其余合并为其他店铺；近7日与前7日沿用同一批店铺</span></div><b class="${signClass(recentQtyChange)}">近7日 ${formatSignedPct(recentQtyChange)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
+    const storeTable = `<details class="overview-disclosure n1-store-table"><summary>查看N系列店铺贡献明细</summary><div class="overview-disclosure-body"><div class="n1-subheading"><div><strong>店铺贡献与台量动能</strong><span>按当前所选周期N系列（16N1＋16N1MAX）有效销售额展示前5店铺，其余合并为其他店铺；近7日与前7日沿用同一批店铺</span></div><b class="${signClass(recentQtyChange)}">近7日 ${formatSignedPct(recentQtyChange)}</b></div>${table(["店铺", "累计销售", "累计有效台量", "销额占比", "近7日台量", "前7日台量", "台量变化"], storeRows, 920)}</div></details>`;
     return `<div class="n1-war-room">${kpis}${charts}${storeTable}</div>`;
   }
 
@@ -2240,7 +2241,7 @@ if (window.WATER_HEATER_DATA_READY) {
       <div class="overview-scope-map-title"><p class="eyebrow">TIME SCOPE</p><h2>总览按截止日固定拆分</h2><span>不再使用任意开始日期混算各模块</span></div>
       <article class="annual"><span>年累</span><strong>${escapeHtml(yearStart)}—${escapeHtml(state.end)}</strong><small>进度、形态</small></article>
       <article class="monthly"><span>当月</span><strong>${escapeHtml(monthStart)}—${escapeHtml(state.end)}</strong><small>结论、店铺、系列、TOP10</small></article>
-      <article class="rolling"><span>滚动30天</span><strong>${escapeHtml(rollingStart)}—${escapeHtml(state.end)}</strong><small>16N1日销与渠道趋势</small></article>
+      <article class="rolling"><span>滚动30天</span><strong>${escapeHtml(rollingStart)}—${escapeHtml(state.end)}</strong><small>N系列日销与渠道趋势</small></article>
       <article class="snapshot"><span>最新完整快照</span><strong>收入 ${escapeHtml(latestIncomeLabel)}</strong><small>价格截至 ${escapeHtml(DATA.meta.priceMonitorDateMax || "-")}</small></article>
     </section>`;
   }
@@ -2272,7 +2273,7 @@ if (window.WATER_HEATER_DATA_READY) {
     const shapeItems = buildOverviewShapeStats(monthCurrentRows, monthPriorRows, monthStart);
     const annualShapeItems = buildOverviewShapeStats(annualCurrentRows, annualPriorRows, yearStart);
     const priceMetrics = buildPriceDecisionMetrics(monthCurrentRows, monthPriorRows, monthTarget, monthStart);
-    const n1Current = monthCurrentRows.filter(is16N1);
+    const n1Current = monthCurrentRows.filter(isNSeries);
     const monthLabel = `${monthYear}年${monthNumber}月`;
     const annualPeriod = `${yearStart}—${state.end}`;
     const monthPeriod = `${monthStart}—${state.end}`;
@@ -2289,7 +2290,7 @@ if (window.WATER_HEATER_DATA_READY) {
         ${panel(`${monthLabel}店铺经营`, "电商整体＋京东自营组合＋销售前6店铺＋其他；销售、同比和形态结构均为当月口径", renderOverviewStoreTable(monthCurrentRows, monthPriorRows), "overview-store-mix", { className: "overview-span-2" })}
       </section>`;
     const monitoringBody = `<section class="overview-content-grid">
-        ${panel("16N1销售作战视图", `截至 ${state.end} · 年累与当月概况、主营店铺销量及近30天趋势`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
+        ${panel("N系列销售作战视图", `16N1＋16N1MAX · 截至 ${state.end} · 年累与当月概况、主营店铺销量及近30天趋势`, render16N1WarRoom(n1Current), "overview-16n1-war-room", { className: "overview-span-2" })}
         ${seriesPanel}
         ${panel("价格监控与当月TOP10", `价格结论截至 ${DATA.meta.priceMonitorDateMax || "-"}；型号TOP10固定使用${monthLabel}数据`, renderFocusedPriceExecutive(monthCurrentRows, monthPriorRows), "overview-competitive-price", { className: "overview-span-2" })}
       </section>`;

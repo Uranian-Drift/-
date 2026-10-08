@@ -1,12 +1,12 @@
 export const BUSINESS_CONTEXT = Object.freeze({
   business: "方太燃气热水器电商经营分析",
   role: "热水器新品GTM及电商操盘",
-  focusProducts: ["16N1", "18M2PRO"],
+  focusProducts: ["16N1", "16N1MAX", "18M2PRO"],
   focusChannels: ["天猫", "京东", "抖音"],
   preferredMetrics: ["销售额", "销量", "销售均价", "核算价", "价格恢复率", "渠道占比", "产品结构"],
   answerPreference: "先结论，再数据，再动作",
   knownContext: [
-    "16N1为重点平衡机产品",
+    "N系列（16N1、16N1MAX）为重点平衡机产品",
     "18M2PRO为重点型号",
     "天猫重点关注18M2整体表现",
     "京东需要区分MAX和PRO表现",
