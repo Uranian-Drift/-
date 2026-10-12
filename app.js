@@ -429,6 +429,39 @@ if (window.WATER_HEATER_DATA_READY) {
       });
   }
 
+  function renderDailySalesBarChart(items) {
+    if (!items.length) return '<div class="empty-state"><div class="empty-state-inner"><h2>当前筛选无数据</h2><p>调整日期或分类筛选后再查看。</p></div></div>';
+    const chartItems = [...items].sort((a, b) => a.name.localeCompare(b.name));
+    const values = chartItems.map((item) => Number(item.amount || 0) / 10000);
+    const maxValue = Math.max(...values, 0);
+    const minValue = Math.min(...values, 0);
+    const span = Math.max(maxValue - minValue, 1);
+    const width = Math.max(760, chartItems.length * 58 + 72);
+    const height = 328;
+    const pad = { top: 36, right: 20, bottom: 74, left: 48 };
+    const plotWidth = width - pad.left - pad.right;
+    const plotHeight = height - pad.top - pad.bottom;
+    const step = plotWidth / chartItems.length;
+    const barWidth = Math.min(30, Math.max(12, step * 0.58));
+    const y = (value) => pad.top + (maxValue - value) / span * plotHeight;
+    const zeroY = y(0);
+    const tickValues = [...new Set([maxValue, maxValue / 2, 0, minValue / 2, minValue].map((value) => Number(value.toFixed(2))))].sort((a, b) => b - a);
+    const grid = tickValues.map((value) => `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}" class="daily-sales-grid-line"/><text x="${pad.left - 8}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end" class="daily-sales-axis-label">${escapeHtml(`${value}万`)}</text></g>`).join("");
+    const bars = chartItems.map((item, index) => {
+      const value = values[index];
+      const x = pad.left + index * step + (step - barWidth) / 2;
+      const valueY = y(value);
+      const barY = Math.min(valueY, zeroY);
+      const barHeight = Math.max(1, Math.abs(zeroY - valueY));
+      const labelY = value >= 0 ? Math.max(pad.top + 12, valueY - 7) : Math.min(height - pad.bottom - 4, valueY + 16);
+      const shortDate = item.name.slice(5);
+      const yoyText = Number.isFinite(item.yoy) ? `；同比 ${formatSignedPct(item.yoy)}` : "";
+      const yoyLabel = Number.isFinite(item.yoy) ? `同比${formatSignedPct(item.yoy)}` : "同比 -";
+      return `<g class="daily-sales-bar-item"><rect x="${x.toFixed(1)}" y="${barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="3" class="${value >= 0 ? "daily-sales-bar" : "daily-sales-bar is-negative"}"/><text x="${(x + barWidth / 2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" class="daily-sales-value-label">${escapeHtml(formatWan(item.amount))}</text><text x="${(x + barWidth / 2).toFixed(1)}" y="${height - pad.bottom + 18}" text-anchor="middle" class="daily-sales-date-label">${escapeHtml(shortDate)}</text><text x="${(x + barWidth / 2).toFixed(1)}" y="${height - pad.bottom + 38}" text-anchor="middle" class="daily-sales-yoy-label ${signClass(item.yoy)}">${escapeHtml(yoyLabel)}</text><title>${escapeHtml(`${item.name}：销售额 ${formatWan(item.amount)}${yoyText}`)}</title></g>`;
+    }).join("");
+    return `<div class="daily-sales-chart-scroll"><svg class="daily-sales-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="按支付日期展示的销售额柱形图，柱顶标注单位为万元的销售额">${grid}<line x1="${pad.left}" x2="${width - pad.right}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}" class="daily-sales-zero-line"/>${bars}</svg></div>`;
+  }
+
   function table(headers, rows, minWidth = 720) {
     const textHeaders = new Set(["日期", "店铺", "渠道", "业务部", "系列", "形态", "形态分类", "形态 / 升数", "新版形态分类", "型号", "产品编码", "经营分层", "主渠道", "主力渠道", "价位段", "升数段"]);
     const centerHeaders = new Set(["排名", "优先级", "层级", "核心品", "状态"]);
@@ -842,6 +875,8 @@ if (window.WATER_HEATER_DATA_READY) {
   const modelText = (row) => `${row.product?.name || ""} ${row.product?.code || ""}`.toUpperCase().replaceAll(" ", "");
   // 16N1 作战板严格汇总 16N1 与 16N1MAX 两个型号，避免“系列”命名造成口径误解。
   const N1_WAR_ROOM_CODES = new Set(["1004001800005", "1004001900010"]);
+  const is16N1 = (row) => String(row.product?.code || "").trim() === "1004001800005";
+  const is16N1Max = (row) => String(row.product?.code || "").trim() === "1004001900010";
   const isNSeries = (row) => N1_WAR_ROOM_CODES.has(String(row.product?.code || "").trim());
   const is18M2 = (row) => modelText(row).includes("18M2");
   const is16M1 = (row) => modelText(row).includes("16M1");
@@ -1670,6 +1705,10 @@ if (window.WATER_HEATER_DATA_READY) {
     const yearStart = `${year}-01-01`;
     const yearRows = overviewRowsForRange(yearStart, state.end);
     const yearToDate = metricSummary(yearRows.filter(isNSeries));
+    const year16N1 = metricSummary(yearRows.filter(is16N1));
+    const year16N1Max = metricSummary(yearRows.filter(is16N1Max));
+    const current16N1 = metricSummary(currentRows.filter(is16N1));
+    const current16N1Max = metricSummary(currentRows.filter(is16N1Max));
     const mainStoreYearRows = yearRows.filter((row) => n1MainStoreKey(row));
     const mainStoreYearAmount = metricSummary(mainStoreYearRows).amount;
     const mainStoreN1YearAmount = metricSummary(mainStoreYearRows.filter(isNSeries)).amount;
@@ -1725,20 +1764,24 @@ if (window.WATER_HEATER_DATA_READY) {
     const kpis = `<div class="n1-summary-stack">
       <div class="n1-overview-row is-ytd" aria-label="16N1与16N1MAX年累经营概况">
         <div class="n1-overview-period"><strong>${escapeHtml(year)}年累计</strong><span>${escapeHtml(yearStart)} 至 ${escapeHtml(state.end)}</span></div>
-        <dl class="n1-overview-metrics">
+        <dl class="n1-overview-metrics has-model-breakdown">
           <div><dt>销售额</dt><dd>${formatWan(yearToDate.amount)}</dd></div>
           <div><dt>台量</dt><dd>${formatInteger(yearToDate.qty)}台</dd></div>
           <div data-main-store-share data-numerator="${mainStoreN1YearAmount}" data-denominator="${mainStoreYearAmount}" title="${escapeHtml(`六组主营店铺内16N1＋16N1MAX年累有效销售额 ${formatCurrency(mainStoreN1YearAmount)} ÷ 同六组店铺全部产品年累有效销售额 ${formatCurrency(mainStoreYearAmount)}（${yearStart} 至 ${state.end}）；店铺范围与下方表格六列一致，不含其他店铺。`)}"><dt>主营店铺销额内占</dt><dd>${formatRate(yearAmountShare)}</dd></div>
           <div><dt>均价</dt><dd>${formatCurrency(yearToDate.avgPrice)}</dd></div>
+          <div class="n1-model-qty"><dt>16N1 台量</dt><dd>${formatInteger(year16N1.qty)}台</dd></div>
+          <div class="n1-model-qty"><dt>16N1MAX 台量</dt><dd>${formatInteger(year16N1Max.qty)}台</dd></div>
         </dl>
       </div>
       <div class="n1-overview-row is-current" aria-label="16N1与16N1MAX当月经营概况">
         <div class="n1-overview-period"><strong>${monthNumber}月 <b>当月 · 累计 ${formatInteger(daysInclusive(monthStart, state.end))} 天</b></strong><span>${escapeHtml(monthStart)} 至 ${escapeHtml(state.end)}</span></div>
-        <dl class="n1-overview-metrics">
+        <dl class="n1-overview-metrics has-model-breakdown">
           <div><dt>销售额</dt><dd>${formatWan(current.amount)}</dd></div>
           <div><dt>台量</dt><dd>${formatInteger(current.qty)}台</dd></div>
           <div><dt>日销</dt><dd>${formatDecimal(monthDailyQty, 1)}台/日</dd></div>
           <div><dt>均价</dt><dd>${formatCurrency(current.avgPrice)}</dd></div>
+          <div class="n1-model-qty"><dt>16N1 台量</dt><dd>${formatInteger(current16N1.qty)}台</dd></div>
+          <div class="n1-model-qty"><dt>16N1MAX 台量</dt><dd>${formatInteger(current16N1Max.qty)}台</dd></div>
         </dl>
       </div>
       ${render16N1MonthlyTrajectory()}
@@ -2455,7 +2498,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
     return `${renderSalesKpis(currentRows, priorRows)}
       <section class="content-grid">
-        ${panel("销售额分日趋势", "按支付日期汇总，与上年同期同日比较", rankList(trend, (item) => formatWan(item.amount)), "daily-sales", { unit: "单位 / 元" })}
+        ${panel("销售额分日趋势", "按支付日期汇总；柱顶显示销售额，悬停可查看同期同比", renderDailySalesBarChart(trend), "daily-sales", { unit: "单位 / 万元" })}
         ${panel("形态结构", shapeModeDescription, `${shapeModeSelector}<div class="structure-cards">${structureCards || '<span class="neutral">当前筛选无形态数据</span>'}</div>${structureTable}`, "shape-structure")}
         ${panel("型号经营明细", `当前共 ${formatInteger(categoryComparableModels.length)} 个型号，默认按销售额从高到低排列；指定型号按对应同期参照型号对比`, modelDetail, "category-model-detail", { className: "span-2" })}
         ${renderDataHealthPanel()}
