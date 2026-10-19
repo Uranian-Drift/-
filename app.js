@@ -3370,7 +3370,7 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderTabs() {
     const tabs = document.getElementById("tabs");
-    tabs.innerHTML = TAB_DEFS.map(([key, label]) => `<button type="button" class="tab-button ${state.tab === key ? "active" : ""}" data-tab="${key}" aria-pressed="${state.tab === key}">${label}</button>`).join("");
+    tabs.innerHTML = TAB_DEFS.map(([key, label]) => `<button type="button" class="tab-button ${state.tab === key ? "active" : ""}" data-tab="${key}" aria-pressed="${state.tab === key}">${label}</button>`).join("") + '<a class="tab-button" href="./price-diagnosis/" style="text-decoration:none;display:inline-flex;align-items:center">均价诊断</a>';
     tabs.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
       const nextTab = button.dataset.tab;
       switchDateContext(nextTab);
