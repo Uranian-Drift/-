@@ -1,11 +1,13 @@
 (() => {
   "use strict";
 
-  const version = "20261026-093700";
+  const version = "20261027-135054";
   const parts = [
     "water-heater-data-00.txt",
     "water-heater-data-01.txt",
-    "water-heater-data-02.txt"
+    "water-heater-data-02.txt",
+    "water-heater-data-03.txt",
+    "water-heater-data-04.txt"
 ];
 
   window.WATER_HEATER_DATA_READY = (async () => {
