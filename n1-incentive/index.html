@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ad1f2b">
+  <title>N1系列激励冲刺榜 · 方太</title>
+  <link rel="icon" href="data:,">
+  <meta name="dashboard-data-script" content="../water-heater-data-loader.js">
+  <link rel="stylesheet" href="styles.css?v=20261030n1a">
+  <script type="module" src="bootstrap.mjs?v=20261030n1a"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand" aria-label="方太 FOTILE">FOTILE<span>方太</span></div>
+    <div class="mast-title"><h1>N1系列激励冲刺榜</h1><span>每一步进度，都离奖励更近</span></div>
+    <div class="head-actions">
+      <button id="publicToggle" class="button white"><span aria-hidden="true">◉</span> 公示模式</button>
+      <button id="exportPoster" class="button glass"><span aria-hidden="true">↗</span> 生成公示战报</button>
+    </div>
+  </header>
+  <div class="toolbar">
+    <nav aria-label="看板栏目" class="tabs">
+      <button class="tab active" data-tab="monthly" aria-selected="true">月度冲刺</button>
+      <button class="tab" data-tab="quarter" aria-selected="false">季度奖项</button>
+      <button class="tab" data-tab="rules" aria-selected="false">激励规则</button>
+    </nav>
+    <div class="filters">
+      <label><span class="sr-only">考核月份</span><select id="monthFilter"><option value="9">2026年9月</option><option value="10" selected>2026年10月</option><option value="11">2026年11月</option></select></label>
+      <label><span class="sr-only">选择店铺</span><select id="storeFilter"><option value="all">全部店铺</option></select></label>
+    </div>
+  </div>
+  <main>
+    <div class="source-bar"><div><i class="status-dot"></i><strong id="cutoff">正在读取 AI 经营看板数据…</strong><span id="scope"></span></div><button id="refresh" class="text-button">↻ 刷新数据</button></div>
+    <div id="error" role="alert" hidden></div>
+    <div id="content" aria-live="polite"><div class="loading">正在读取店铺进度…</div></div>
+    <footer><p id="sourceFooter">数据来源：AI经营看板5.1，共用销售数据。</p><button id="copyLink" class="text-button">复制公示链接</button></footer>
+  </main>
+  <div id="toast" role="status" hidden></div>
+  <dialog id="posterDialog">
+    <div class="dialog-heading"><div><span class="eyebrow">店铺进度公示</span><h2>战报已生成</h2></div><button id="closePoster" class="icon-button" aria-label="关闭战报">×</button></div>
+    <p class="dialog-intro">保存图片后，可直接发到店铺群。战报保留销量截止日与奖励条件。</p>
+    <img id="posterPreview" alt="当前所选范围的店铺激励进度战报">
+    <div class="dialog-actions"><button id="downloadPoster" class="button red">下载高清 PNG</button><button id="copyPosterText" class="button light">复制公示文案</button></div>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "year": 2026,
+  "title": "N1系列激励冲刺榜",
+  "productCodes": ["1004001800005", "1004001900010"],
+  "productLabel": "16N1＋16N1MAX",
+  "monthlyReward": 800,
+  "quarterReward": 2400,
+  "months": [9, 10, 11],
+  "stores": [
+    {"key":"jd-second","label":"京东自营二店","channel":"京东自营代销","match":{"store":["北京京东世纪贸易有限公司（方太自营二店）"]},"targets":{"9":259,"10":350,"11":399}},
+    {"key":"jd-self","label":"京东自营","channel":"京东自营","match":{"store":["北京京东世纪贸易有限公司"]},"targets":{"9":111,"10":292,"11":216}},
+    {"key":"tmall-heater","label":"天猫品旗（七叶枫）","channel":"天猫品旗","match":{"store":["广州七叶枫（天猫品旗）"]},"targets":{"9":100,"10":200,"11":160}},
+    {"key":"tmall-official","label":"天猫官方旗舰店","shortLabel":"天猫官旗","channel":"天猫官旗","match":{"channel":["天猫官旗"]},"targets":{"9":100,"10":200,"11":160}},
+    {"key":"douyin-direct","label":"抖音直营","channel":"抖音直营","match":{"channel":["抖音直营"]},"targets":{"9":73,"10":103,"11":140}},
+    {"key":"jd-pop","label":"京东官方旗舰店","channel":"京东POP","match":{"channel":["京东POP"]},"targets":{"9":25,"10":60,"11":65}}
+  ]
+}

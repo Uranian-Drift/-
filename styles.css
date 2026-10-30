@@ -6927,6 +6927,50 @@ body.v42 {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+.v51 .tabs {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.v51 #globalFilterPanel[hidden],
+.v51 #dashboardContent[hidden],
+.v51 #selfBiMount[hidden],
+.v51 #incentiveMount[hidden] {
+  display: none !important;
+}
+
+.v51 #selfBiMount,
+.v51 #incentiveMount {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--inner-light), var(--shadow);
+}
+
+.v51 #selfBiFrame {
+  display: block;
+  width: 100%;
+  height: max(760px, calc(100vh - 206px));
+  border: 0;
+}
+
+.v51 #incentiveFrame { display: block; width: 100%; height: 1180px; border: 0; }
+.v51.incentive-public .app-header,
+.v51.incentive-public #tabs { display: none !important; }
+.v51.incentive-public .page-shell { max-width: none; margin: 0; padding: 0; }
+.v51.incentive-public #incentiveMount { border: 0; border-radius: 0; box-shadow: none; }
+
+@media (max-width: 1180px) {
+  .v51 .tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .v51 .tabs { display: flex; }
+  .v51 .tabs .tab-button { flex: 0 0 auto; }
+  .v51 #selfBiFrame { height: max(760px, calc(100vh - 174px)); }
+}
+
 .v49 .income-filter-mode .unified-filters {
   grid-template-columns: repeat(2, minmax(190px, 240px)) repeat(2, minmax(180px, 1fr)) auto;
 }

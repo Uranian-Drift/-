@@ -51,6 +51,8 @@ if (window.WATER_HEATER_DATA_READY) {
     ["store", "店铺效率"],
     ["core", "型号效率"],
     ["industry", "行业-奥维"],
+    ["incentive", "激励进度"],
+    ["selfBi", "自助 BI 工作台"],
   ];
 
   const uniqueSorted = (values) => [...new Set(values.filter((value) => value !== "" && value != null))]
@@ -3155,6 +3157,36 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function renderDashboard() {
+    const selfBiActive = state.tab === "selfBi";
+    const incentiveActive = state.tab === "incentive";
+    const isolatedActive = selfBiActive || incentiveActive;
+    const selfBiMount = document.getElementById("selfBiMount");
+    const incentiveMount = document.getElementById("incentiveMount");
+    document.getElementById("globalFilterPanel").hidden = isolatedActive;
+    content.hidden = isolatedActive;
+    selfBiMount.hidden = !selfBiActive;
+    incentiveMount.hidden = !incentiveActive;
+    document.body.classList.toggle("self-bi-active", selfBiActive);
+    if (!incentiveActive) document.body.classList.remove("incentive-public");
+    if (incentiveActive) {
+      const frame = document.getElementById("incentiveFrame");
+      if (!frame.hasAttribute("src")) {
+        const assetVersion = new URL(import.meta.url).searchParams.get("v") || "local";
+        frame.src = `./n1-incentive/?embedded=1&v=${encodeURIComponent(assetVersion)}`;
+      }
+      if (aiState.open) renderAiPanel();
+      return;
+    }
+    if (selfBiActive) {
+      const frame = document.getElementById("selfBiFrame");
+      if (!frame.hasAttribute("src")) {
+        const assetVersion = new URL(import.meta.url).searchParams.get("v") || "local";
+        const snapshotVersion = `${assetVersion}-${DATA.meta.generatedAt}-${DATA.meta.salesDateMax}-${INCOME_DATA?.meta?.generatedAt || ""}`;
+        frame.src = `./self-bi/?embedded=1&v=${encodeURIComponent(snapshotVersion)}`;
+      }
+      if (aiState.open) renderAiPanel();
+      return;
+    }
     updateFilterContext();
     if (state.tab === "overview") content.innerHTML = renderOverview();
     if (state.tab === "category") content.innerHTML = renderCategory();
@@ -3370,15 +3402,32 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderTabs() {
     const tabs = document.getElementById("tabs");
-    tabs.innerHTML = TAB_DEFS.map(([key, label]) => `<button type="button" class="tab-button ${state.tab === key ? "active" : ""}" data-tab="${key}" aria-pressed="${state.tab === key}">${label}</button>`).join("") + '<a class="tab-button" href="./price-diagnosis/" style="text-decoration:none;display:inline-flex;align-items:center">均价诊断</a>';
+    tabs.innerHTML = TAB_DEFS.map(([key, label]) => `<button type="button" class="tab-button ${state.tab === key ? "active" : ""}" data-tab="${key}" aria-pressed="${state.tab === key}">${label}</button>`).join("");
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      tabs.querySelector(".tab-button.active")?.scrollIntoView({ block: "nearest", inline: "center" });
+    }
     tabs.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
       const nextTab = button.dataset.tab;
       switchDateContext(nextTab);
       state.tab = nextTab;
+      const viewUrl = new URL(location.href);
+      viewUrl.searchParams.set("tab", nextTab);
+      history.replaceState(null, "", viewUrl);
       renderTabs();
       renderDashboard();
     }));
   }
+
+  window.addEventListener("message", (event) => {
+    const frame = document.getElementById("incentiveFrame");
+    if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+    if (event.data?.type === "n1-incentive-height" && Number.isFinite(event.data.height)) {
+      frame.style.height = `${Math.max(500, Math.min(12000, event.data.height))}px`;
+    }
+    if (event.data?.type === "n1-incentive-public" && state.tab === "incentive") {
+      document.body.classList.toggle("incentive-public", event.data.active === true);
+    }
+  });
 
   function filterButtonLabel(key) {
     const { label, options } = FILTERS[key];

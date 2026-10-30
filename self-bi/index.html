@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#a92230">
+  <meta name="dashboard-data-script" content="../water-heater-data-loader.js">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%23a92230'/%3E%3Ctext x='32' y='46' text-anchor='middle' fill='white' font-family='Georgia' font-size='47'%3EF%3C/text%3E%3C/svg%3E">
+  <title>方太 · 自助 BI 工作台</title>
+  <link rel="stylesheet" href="./styles.css?v=20261030n1a">
+</head>
+<body class="embedded">
+  <div class="app-shell">
+    <aside class="rail" aria-label="工作台导航">
+      <div class="brand-mark">F</div>
+      <button class="rail-item active" title="即席分析" aria-label="即席分析">▦</button>
+      <button class="rail-item" id="railViews" title="我的视图" aria-label="我的视图">▤</button>
+      <button class="rail-item" id="railHelp" title="使用说明" aria-label="使用说明">ⓘ</button>
+      <div class="rail-spacer"></div>
+      <span class="rail-caption">LOCAL</span>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="top-title"><span class="top-prefix">FOTILE / DATA STUDIO</span><h1>自助 BI 工作台</h1><span class="top-divider"></span><span class="top-subtitle">即席分析</span></div>
+        <div class="top-actions"><span class="local-pill"><i></i> 本机独立运行</span><button class="ghost-btn" id="sourceBtn">数据与口径</button><button class="ghost-btn" id="helpBtn">使用说明</button></div>
+      </header>
+      <div class="workspace">
+        <aside class="field-panel" id="fieldPanel">
+          <div class="panel-heading"><div><div class="eyebrow">DATASET</div><h2>数据集与字段</h2></div><button class="icon-btn mobile-close" id="closeFields" aria-label="关闭字段栏">×</button></div>
+          <label class="select-wrap"><span class="sr-only">选择数据集</span><select id="datasetSelect"></select></label>
+          <div class="dataset-meta" id="datasetMeta"></div>
+          <div class="search-wrap"><span>⌕</span><input id="fieldSearch" placeholder="搜索维度或指标" aria-label="搜索字段"></div>
+          <div class="field-tip">拖入右侧区域，或点击字段快速添加</div>
+          <div class="field-list" id="fieldList"></div>
+          <div class="field-footer"><span class="dot"></span><span id="fieldFooter">字段已就绪</span></div>
+        </aside>
+        <main class="canvas">
+          <div class="page-heading">
+            <div><div class="eyebrow">SELF-SERVICE ANALYTICS</div><h2 id="viewTitle">经营数据即席分析</h2><p id="viewSubtitle">拖拽字段，自由组合行、列与指标</p></div>
+            <div class="heading-actions"><button class="button button-light" id="mobileFields">字段面板</button><button class="button button-light" id="openViewsBtn">我的视图</button><button class="button button-light" id="inlineHelpBtn">使用说明</button><button class="button button-light" id="resetBtn">重置分析</button><button class="button button-light" id="saveBtn">保存视图</button><button class="button button-primary" id="exportBtn">导出 CSV <span>↗</span></button></div>
+          </div>
+          <section class="source-strip" aria-label="数据说明"><span class="source-icon">ⓘ</span><span id="sourceStrip"></span><button id="sourceStripBtn">查看口径 →</button></section>
+          <section class="builder card" aria-label="分析配置">
+            <div class="section-bar"><div><span class="step">01</span><h3>搭建分析</h3><span class="section-desc">维度决定切分方式，指标决定计算结果</span></div><div class="builder-tools"><button class="text-btn" id="templateBtn">分析模板</button><label>金额单位 <select id="unitSelect"><option value="wan">万元</option><option value="yuan">元</option></select></label></div></div>
+            <div class="builder-grid">
+              <div class="drop-box"><div class="drop-label"><span class="zone-icon">↕</span><strong>行维度</strong><small>向下展开</small></div><div class="dropzone" data-zone="rows" id="rowsZone"></div></div>
+              <div class="drop-box"><div class="drop-label"><span class="zone-icon">↔</span><strong>列维度</strong><small>横向对比</small></div><div class="dropzone" data-zone="cols" id="colsZone"></div></div>
+              <div class="drop-box"><div class="drop-label"><span class="zone-icon">Σ</span><strong>统计指标</strong><small>可放入多个</small></div><div class="dropzone" data-zone="measures" id="measuresZone"></div></div>
+              <div class="drop-box"><div class="drop-label"><span class="zone-icon">◇</span><strong>筛选字段</strong><small>精确筛选</small></div><div class="dropzone" data-zone="filters" id="filtersZone"></div></div>
+            </div>
+            <div class="filter-bar"><span class="filter-label">日期范围</span><input type="date" id="dateStart" aria-label="开始日期"><span class="date-dash">—</span><input type="date" id="dateEnd" aria-label="结束日期"><div class="quick-ranges" id="quickRanges"></div><span class="filter-count" id="filterCount"></span></div>
+            <div class="compare-bar"><label>对比方式 <select id="compareSelect"><option value="none">不对比</option><option value="yoy">同比同窗</option><option value="pop">上期同长度</option></select></label><span id="compareStatus"></span></div>
+          </section>
+          <section class="metric-grid" id="metricCards" aria-label="汇总指标"></section>
+          <section class="result card" aria-label="分析结果">
+            <div class="section-bar result-bar"><div><span class="step">02</span><h3>分析结果</h3><span class="section-desc" id="resultSummary"></span></div><div class="result-actions"><button class="tab active" data-tab="pivot">透视表</button><button class="tab" data-tab="chart">图表分析</button><button class="tab" data-tab="detail">明细预览</button></div></div>
+            <div id="pivotView" class="view-panel"><div class="table-toolbar"><span id="tableSummary"></span><div><label>排序 <select id="sortSelect"><option value="desc">主指标降序</option><option value="asc">主指标升序</option><option value="label">维度名称</option><option value="custom">按所点表头</option></select></label><button class="text-btn" id="copyBtn">复制表格</button></div></div><div class="table-scroll" id="pivotTable"></div><div class="table-foot" id="tableFoot"></div></div>
+            <div id="chartView" class="view-panel hidden"><div class="chart-config"><div class="chart-drop"><span>X 横轴</span><div class="dropzone compact" data-zone="chartX" id="chartXZone"></div></div><div class="chart-drop"><span>Y 指标</span><div class="dropzone compact" data-zone="chartY" id="chartYZone"></div></div><div class="chart-drop"><span>图例分组</span><div class="dropzone compact" data-zone="chartSeries" id="chartSeriesZone"></div></div><label class="chart-type">图形 <select id="chartType"><option value="bar">柱状图</option><option value="line">折线图</option><option value="horizontal">条形图</option></select></label></div><div id="chartNotice" class="chart-notice"></div><div class="chart-wrap"><svg id="chartSvg" role="img" aria-label="分析图表"></svg></div><div class="chart-legend" id="chartLegend"></div></div>
+            <div id="detailView" class="view-panel hidden"><div class="table-toolbar"><span id="detailSummary"></span><div><button class="text-btn hidden" id="clearDrillBtn">返回全部明细</button><button class="text-btn" id="detailExportBtn">导出当前明细 CSV</button></div></div><div class="table-scroll" id="detailTable"></div><div class="table-foot">仅预览前 100 行；导出将包含当前明细范围内的全部记录。</div></div>
+          </section>
+          <footer class="footer"><span>方太经营分析 · 自助工作台</span><span id="footerSource"></span></footer>
+        </main>
+        <aside class="views-panel" id="viewsPanel" aria-label="我的视图"><div class="views-header"><div><div class="eyebrow">MY VIEWS</div><h2>我的视图</h2></div><button class="icon-btn" id="closeViews">×</button></div><p>保存的分析配置仅保存在这台电脑的浏览器中。</p><div id="savedViews"></div></aside>
+      </div>
+    </div>
+  </div>
+  <div class="overlay hidden" id="overlay"></div>
+  <div class="modal hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><h2 id="modalTitle"></h2><button class="icon-btn" id="modalClose" aria-label="关闭">×</button></div><div class="modal-body" id="modalBody"></div><div class="modal-actions" id="modalActions"></div></div>
+  <div class="toast hidden" id="toast" role="status"></div>
+  <script type="module" src="./bootstrap.mjs?v=20261030n1a"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const version = "20261027-161924";
+  const version = "20261030n1a";
   const parts = [
     "water-heater-data-00.txt",
     "water-heater-data-01.txt",
@@ -9,13 +9,14 @@
     "water-heater-data-03.txt",
     "water-heater-data-04.txt"
 ];
+  const assetBase = new URL(".", document.currentScript.src);
 
   window.WATER_HEATER_DATA_READY = (async () => {
     if (typeof DecompressionStream !== "function") {
       throw new Error("当前浏览器不支持数据解压，请使用最新版 Chrome、Edge 或 Safari。");
     }
 
-    const responses = await Promise.all(parts.map((path) => fetch(`${path}?v=${version}`)));
+    const responses = await Promise.all(parts.map((path) => fetch(new URL(`${path}?v=${version}`, assetBase))));
     const failed = responses.find((response) => !response.ok);
     if (failed) throw new Error(`数据分片读取失败：${failed.status}`);
 
