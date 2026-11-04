@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#971d22" />
     <title>电商GTM AI经营分析系统 5.1</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%238b1720'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='31' font-family='Arial' font-weight='700' fill='white'%3E5.1%3C/text%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20261104-133755" />
+    <link rel="stylesheet" href="styles.css?v=20261104-174833" />
   </head>
   <body class="v42 v49 v50 v51">
     <div class="page-shell">
@@ -18,7 +18,7 @@
             <span class="version-badge">Decision Overview 5.1</span>
           </div>
           <h1>电商GTM AI经营分析系统 <span>5.1</span></h1>
-          <p class="source-line" id="sourceLine">正在读取本地数据快照…</p>
+          <p class="source-line" id="sourceLine">正在加载经营数据…</p>
         </div>
         <div class="header-actions">
           <span class="snapshot-badge">AI深度分析版</span>
@@ -74,7 +74,9 @@
 
         <div id="ai-panel" class="ai-panel glass" hidden aria-live="polite"></div>
 
-        <section id="dashboardContent" aria-live="polite"></section>
+        <section id="dashboardContent" aria-live="polite">
+          <div class="empty-state"><div class="empty-state-inner"><h2>正在加载销售快照…</h2><p>总览就绪后，市场明细在需要时读取。</p></div></div>
+        </section>
         <section id="selfBiMount" aria-label="自助 BI 工作台" hidden>
           <iframe id="selfBiFrame" title="自助 BI 工作台" loading="lazy"></iframe>
         </section>
@@ -128,8 +130,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="water-heater-data-loader.js?v=20261104-133755"></script>
-    <script src="data/income-data.js?v=20261104-133755"></script>
-    <script type="module" src="app.js?v=20261104-133755"></script>
+    <script src="water-heater-data-loader.js?v=20261104-174833"></script>
+    <script type="module" src="app.js?v=20261104-174833"></script>
   </body>
 </html>

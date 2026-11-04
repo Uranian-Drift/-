@@ -14,7 +14,6 @@ if (window.WATER_HEATER_DATA_READY) {
   "use strict";
 
   const DATA = window.WATER_HEATER_DATA;
-  const INCOME_DATA = window.WATER_HEATER_INCOME_DATA || null;
   const content = document.getElementById("dashboardContent");
 
   if (!DATA) {
@@ -30,8 +29,6 @@ if (window.WATER_HEATER_DATA_READY) {
     .replaceAll("'", "&#039;");
 
   const zip = (fields, row) => Object.fromEntries(fields.map((field, index) => [field, row[index]]));
-  const incomeCurrent = INCOME_DATA ? INCOME_DATA.current.map((row) => zip(INCOME_DATA.fields, row)) : [];
-  const incomePrior = INCOME_DATA ? INCOME_DATA.prior.map((row) => zip(INCOME_DATA.fields, row)) : [];
   const products = DATA.products.map((row) => zip(DATA.productFields, row));
   const sales = DATA.sales.map((row) => {
     const record = zip(DATA.salesFields, row);
@@ -39,6 +36,19 @@ if (window.WATER_HEATER_DATA_READY) {
     return record;
   });
   const ovi = DATA.ovi.map((row) => zip(DATA.oviFields, row));
+  let oviReady = ovi.length > 0;
+  let oviLoadPromise;
+  function ensureOviRows() {
+    if (oviReady) return Promise.resolve(ovi);
+    if (typeof window.ensureOviData !== "function") return Promise.reject(new Error("奥维快照加载器不可用"));
+    if (!oviLoadPromise) oviLoadPromise = window.ensureOviData().then((rows) => {
+      if (!Array.isArray(rows) || !rows.length) throw new Error("奥维明细为空");
+      for (const row of rows) ovi.push(zip(DATA.oviFields, row));
+      oviReady = true;
+      return ovi;
+    }).catch((error) => { oviLoadPromise = null; throw error; });
+    return oviLoadPromise;
+  }
   const targets = (DATA.targets || []).map((row) => zip(DATA.targetFields || [], row));
   const competitorPrices = (DATA.priceMonitor || []).map((row) => zip(DATA.priceMonitorFields || [], row));
   const PRICE_BANDS = ["2000以下", "2000–2500", "2500–3000", "3000–3500", "3500–4000", "4000以上"];
@@ -47,7 +57,6 @@ if (window.WATER_HEATER_DATA_READY) {
     ["overview", "经营总览"],
     ["category", "品类销售"],
     ["channel", "渠道效率"],
-    ["income", "收入经营"],
     ["store", "店铺效率"],
     ["core", "型号效率"],
     ["industry", "行业-奥维"],
@@ -114,19 +123,14 @@ if (window.WATER_HEATER_DATA_READY) {
 
   const maxDate = DATA.meta.salesDateMax;
   const defaultStart = `${maxDate.slice(0, 7)}-01`;
-  const incomeDefaultStart = INCOME_DATA?.meta?.incomeDateMin || `${maxDate.slice(0, 4)}-01-01`;
-  const incomeDefaultEnd = INCOME_DATA?.meta?.incomeDateMax || maxDate;
   const requestedTab = new URLSearchParams(window.location.search).get("tab");
   const initialTab = TAB_DEFS.some(([key]) => key === requestedTab) ? requestedTab : "overview";
-  const initialIncomeMode = initialTab === "income";
   const state = {
     tab: initialTab,
-    start: initialIncomeMode ? incomeDefaultStart : defaultStart,
-    end: initialIncomeMode ? incomeDefaultEnd : maxDate,
+    start: defaultStart,
+    end: maxDate,
     salesStart: defaultStart,
     salesEnd: maxDate,
-    incomeStart: incomeDefaultStart,
-    incomeEnd: incomeDefaultEnd,
     priceLower: 2000,
     priceUpper: 4000,
     shapeBreakdownMode: "newClassification",
@@ -155,11 +159,28 @@ if (window.WATER_HEATER_DATA_READY) {
     mode: (() => { try { return localStorage.getItem("WATER_HEATER_AI_MODE_V47") || "deep"; } catch { return "deep"; } })(),
     contextOpen: false,
   };
-  const chatController = createDeepChatController({
+  let chatController = createDeepChatController({
     dataSources: { sales, ovi, meta: DATA.meta },
     getDashboardFilters: getCurrentDashboardFilters,
     getBusinessContext: getSavedAiBusinessContext,
   });
+  let chatControllerHasOvi = oviReady;
+  function bindChatController() {
+    chatController.setOnChange((snapshot) => {
+      aiState.chat = snapshot;
+      if (aiState.open) renderAiPanel();
+    });
+  }
+  function refreshChatController() {
+    if (chatControllerHasOvi || !oviReady) return;
+    chatController = createDeepChatController({
+      dataSources: { sales, ovi, meta: DATA.meta },
+      getDashboardFilters: getCurrentDashboardFilters,
+      getBusinessContext: getSavedAiBusinessContext,
+    });
+    chatControllerHasOvi = true;
+    bindChatController();
+  }
 
   const formatInteger = (value) => Math.round(Number(value || 0)).toLocaleString("zh-CN");
   const formatWan = (value) => {
@@ -206,23 +227,6 @@ if (window.WATER_HEATER_DATA_READY) {
       ? toIso(new Date(Date.UTC(year, month, 0)))
       : iso;
   };
-
-  function switchDateContext(nextTab) {
-    const wasIncome = state.tab === "income";
-    const willBeIncome = nextTab === "income";
-    if (wasIncome === willBeIncome) return;
-    if (wasIncome) {
-      state.incomeStart = state.start;
-      state.incomeEnd = state.end;
-      state.start = state.salesStart;
-      state.end = state.salesEnd;
-    } else {
-      state.salesStart = state.start;
-      state.salesEnd = state.end;
-      state.start = state.incomeStart;
-      state.end = state.incomeEnd;
-    }
-  }
 
   function passesDimensionFilters(record, ignoredKeys = []) {
     const ignored = new Set(ignoredKeys);
@@ -1290,44 +1294,6 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderOverviewConclusion(priceMetrics, shapeItems) {
     const scheduleGap = Number.isFinite(priceMetrics.expectedAmount) ? priceMetrics.current.amount - priceMetrics.expectedAmount : NaN;
-    const latestIncomeMonth = INCOME_DATA?.meta?.incomeMonthMax || "";
-    const latestIncomeSalesRows = latestIncomeMonth
-      ? sales.filter((row) => row.date.slice(0, 7) === latestIncomeMonth)
-      : [];
-    const latestIncomeRows = latestIncomeMonth
-      ? incomeCurrent.filter((row) => row.month === latestIncomeMonth)
-      : [];
-    const latestIncome = latestIncomeMonth
-      ? revenueSummary(latestIncomeSalesRows, latestIncomeRows)
-      : null;
-    const jdSelfOperatedChannels = new Set(["京东自营", "京东自营代销"]);
-    const latestJdDirectIncome = latestIncomeMonth
-      ? revenueSummary(
-        latestIncomeSalesRows.filter((row) => dimValue(row, "channel") === "京东自营"),
-        latestIncomeRows.filter((row) => row.channel === "京东自营"),
-      )
-      : null;
-    const latestJdConsignmentIncome = latestIncomeMonth
-      ? revenueSummary(
-        latestIncomeSalesRows.filter((row) => dimValue(row, "channel") === "京东自营代销"),
-        latestIncomeRows.filter((row) => row.channel === "京东自营代销"),
-      )
-      : null;
-    const latestJdIncome = latestIncomeMonth
-      ? revenueSummary(
-        latestIncomeSalesRows.filter((row) => jdSelfOperatedChannels.has(dimValue(row, "channel"))),
-        latestIncomeRows.filter((row) => jdSelfOperatedChannels.has(row.channel)),
-      )
-      : null;
-    const latestOtherIncome = latestIncomeMonth
-      ? revenueSummary(
-        latestIncomeSalesRows.filter((row) => !jdSelfOperatedChannels.has(dimValue(row, "channel"))),
-        latestIncomeRows.filter((row) => !jdSelfOperatedChannels.has(row.channel)),
-      )
-      : null;
-    const latestIncomePeriod = latestIncomeMonth
-      ? `${latestIncomeMonth.slice(0, 4)}年${Number(latestIncomeMonth.slice(5))}月`
-      : "最新完整月";
     const currentMonthNumber = Number(state.end.slice(5, 7));
     const currentMonthLabel = `${state.end.slice(0, 4)}年${currentMonthNumber}月`;
     const focus = [...shapeItems].filter((item) => Number.isFinite(item.targetGap)).sort((a, b) => a.targetGap - b.targetGap)[0];
@@ -1350,22 +1316,6 @@ if (window.WATER_HEATER_DATA_READY) {
         <article class="overview-kpi-card sales"><span>${currentMonthNumber}月销额</span><strong>${formatWan(priceMetrics.current.amount)} / ${formatWan(priceMetrics.targetAmount)}</strong><small>完成率 ${formatRate(priceMetrics.salesCompletion)} · 较计划节奏 ${formatSignedPct(priceMetrics.salesPace)}</small></article>
         <article class="overview-kpi-card qty"><span>${currentMonthNumber}月台量</span><strong>${formatInteger(priceMetrics.current.qty)} / ${formatInteger(priceMetrics.targetQty)}台</strong><small>完成率 ${formatRate(priceMetrics.qtyCompletion)} · 较计划节奏 ${formatSignedPct(priceMetrics.qtyPace)}</small></article>
         <article class="overview-kpi-card price"><span>${currentMonthNumber}月均价</span><strong>${formatCurrency(priceMetrics.current.avgPrice)}</strong><small>同期 ${formatCurrency(priceMetrics.prior.avgPrice)} · 目标：高于同期</small></article>
-        <article class="overview-income-summary">
-          <div class="overview-income-head">
-            <div><span>最新完整收入月</span><b>${escapeHtml(latestIncomePeriod)}</b></div>
-            <div><strong>${latestIncome ? formatWan(latestIncome.income) : "-"}</strong><small>全渠道收入 · 综合口径 ${latestIncome ? formatRate(latestIncome.financialRate) : "-"}</small></div>
-          </div>
-          <div class="overview-income-split">
-            <div class="jd-group">
-              <div class="income-group-head"><span>京东自营组合</span><b>${latestJdIncome ? formatWan(latestJdIncome.income) : "-"}</b><small>综合转化率 ${latestJdIncome ? formatRate(latestJdIncome.financialRate) : "-"}</small></div>
-              <div class="income-subchannels">
-                <div><span>京东自营</span><b>${latestJdDirectIncome ? formatWan(latestJdDirectIncome.income) : "-"}</b><small>转化率 ${latestJdDirectIncome ? formatRate(latestJdDirectIncome.financialRate) : "-"}</small></div>
-                <div><span>京东自营代销</span><b>${latestJdConsignmentIncome ? formatWan(latestJdConsignmentIncome.income) : "-"}</b><small>转化率 ${latestJdConsignmentIncome ? formatRate(latestJdConsignmentIncome.financialRate) : "-"}</small></div>
-              </div>
-            </div>
-            <div><span>其他渠道</span><b>${latestOtherIncome ? formatWan(latestOtherIncome.income) : "-"}</b><small>销售到收入转化率 ${latestOtherIncome ? formatRate(latestOtherIncome.financialRate) : "-"}</small></div>
-          </div>
-        </article>
       </div>
       <p class="overview-command-focus"><b>首要任务：</b>${escapeHtml(priorityDetail)}；${growthLeader ? `${escapeHtml(growthLeader.name)}当前净增减 ${formatSignedWan(growthLeader.delta)}` : ""}。</p>
     </section>`;
@@ -2279,16 +2229,13 @@ if (window.WATER_HEATER_DATA_READY) {
     ${renderOverviewTopModels(currentRows, priorRows)}`;
   }
 
-  function renderOverviewScopeMap({ yearStart, monthStart, rollingStart, latestIncomeMonth }) {
-    const latestIncomeLabel = latestIncomeMonth
-      ? `${latestIncomeMonth.slice(0, 4)}年${Number(latestIncomeMonth.slice(5, 7))}月`
-      : "暂无完整收入月";
+  function renderOverviewScopeMap({ yearStart, monthStart, rollingStart }) {
     return `<section class="overview-scope-map" aria-label="经营总览时间口径">
       <div class="overview-scope-map-title"><p class="eyebrow">TIME SCOPE</p><h2>总览按截止日固定拆分</h2><span>不再使用任意开始日期混算各模块</span></div>
       <article class="annual"><span>年累</span><strong>${escapeHtml(yearStart)}—${escapeHtml(state.end)}</strong><small>进度、形态</small></article>
       <article class="monthly"><span>当月</span><strong>${escapeHtml(monthStart)}—${escapeHtml(state.end)}</strong><small>结论、店铺、系列、TOP10</small></article>
       <article class="rolling"><span>滚动30天</span><strong>${escapeHtml(rollingStart)}—${escapeHtml(state.end)}</strong><small>N系列日销与渠道趋势</small></article>
-      <article class="snapshot"><span>最新完整快照</span><strong>收入 ${escapeHtml(latestIncomeLabel)}</strong><small>价格截至 ${escapeHtml(DATA.meta.priceMonitorDateMax || "-")}</small></article>
+      <article class="snapshot"><span>价格监控快照</span><strong>${escapeHtml(DATA.meta.priceMonitorDateMax || "-")}</strong><small>最新采样日期</small></article>
     </section>`;
   }
 
@@ -2324,7 +2271,6 @@ if (window.WATER_HEATER_DATA_READY) {
     const annualPeriod = `${yearStart}—${state.end}`;
     const monthPeriod = `${monthStart}—${state.end}`;
     const rollingPeriod = `${rollingStart}—${state.end}`;
-    const latestIncomeMonth = INCOME_DATA?.meta?.incomeMonthMax || "";
     const dualCycleBody = `<section class="overview-executive-progress">
         ${renderExecutiveProgressCard("全年累计销售进度", annualCurrentRows, annualPriorRows, annualTarget, { featured: true })}
         ${renderExecutiveProgressCard("当月累计销售进度", monthCurrentRows, monthPriorRows, monthTarget, { monthly: true })}
@@ -2341,11 +2287,11 @@ if (window.WATER_HEATER_DATA_READY) {
         ${panel("价格监控与当月TOP10", `价格结论截至 ${DATA.meta.priceMonitorDateMax || "-"}；型号TOP10固定使用${monthLabel}数据`, renderFocusedPriceExecutive(monthCurrentRows, monthPriorRows), "overview-competitive-price", { className: "overview-span-2" })}
       </section>`;
     return `<div class="overview-page">
-      ${renderOverviewScopeMap({ yearStart, monthStart, rollingStart, latestIncomeMonth })}
-      ${renderOverviewScopeSection("01", "当月经营判断", monthPeriod, `${monthLabel}销售结论与目标节奏；收入卡单独标记最新完整审核月`, renderOverviewConclusion(priceMetrics, shapeItems), "monthly")}
+      ${renderOverviewScopeMap({ yearStart, monthStart, rollingStart })}
+      ${renderOverviewScopeSection("01", "当月经营判断", monthPeriod, `${monthLabel}销售结论与目标节奏`, renderOverviewConclusion(priceMetrics, shapeItems), "monthly")}
       ${renderOverviewScopeSection("02", "年累与当月对照", `${annualPeriod} / ${monthPeriod}`, "只在适合比较的进度和形态模块中并排展示双周期", dualCycleBody, "dual")}
       ${renderOverviewScopeSection("03", "当月经营拆解", monthPeriod, "店铺、系列和型号排名全部固定为当月累计口径", monthlyBreakdownBody, "monthly")}
-      ${renderOverviewScopeSection("04", "滚动趋势与最新监控", `${rollingPeriod} / 最新快照`, "滚动30天、最新完整收入月和价格监控日期不与年累或当月混算", monitoringBody, "rolling")}
+      ${renderOverviewScopeSection("04", "滚动趋势与最新监控", `${rollingPeriod} / 最新快照`, "滚动30天和价格监控日期按各自时间口径展示", monitoringBody, "rolling")}
     </div>`;
   }
 
@@ -2815,300 +2761,6 @@ if (window.WATER_HEATER_DATA_READY) {
       </section>`;
   }
 
-  function incomeRowsForRange(rows, start, end) {
-    const startMonth = String(start).slice(0, 7);
-    const endMonth = String(end).slice(0, 7);
-    const businessAll = state.selections.business.size === FILTERS.business.options.length;
-    const channelAll = state.selections.channel.size === FILTERS.channel.options.length;
-    return rows.filter((row) => (
-      row.month >= startMonth
-      && row.month <= endMonth
-      && (businessAll || state.selections.business.has(row.business || "未标注"))
-      && (channelAll || state.selections.channel.has(row.channel || "未标注"))
-    ));
-  }
-
-  function salesRowsForIncomeRange(start, end) {
-    return sales.filter((row) => (
-      row.date >= start
-      && row.date <= end
-      && state.selections.business.has(dimValue(row, "business"))
-      && state.selections.channel.has(dimValue(row, "channel"))
-    ));
-  }
-
-  function revenueSummary(salesRows, incomeRows) {
-    const salesAmount = salesRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const incomeAmount = incomeRows.reduce((sum, row) => sum + Number(row.income || 0), 0);
-    const incomeTaxEq = incomeRows.reduce((sum, row) => sum + Number(row.incomeTaxEq || 0), 0);
-    const incomeQty = incomeRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
-    return {
-      sales: salesAmount,
-      income: incomeAmount,
-      incomeTaxEq,
-      incomeQty,
-      financialRate: salesAmount ? incomeAmount / salesAmount : NaN,
-      comparableRate: salesAmount ? incomeTaxEq / salesAmount : NaN,
-      conversionGap: salesAmount - incomeTaxEq,
-    };
-  }
-
-  function incomePeriodLabel(start, end) {
-    const [startYear, startMonth] = start.slice(0, 7).split("-").map(Number);
-    const [endYear, endMonth] = end.slice(0, 7).split("-").map(Number);
-    if (startYear === endYear) return startMonth === endMonth ? `${startMonth}月` : `${startMonth}—${endMonth}月`;
-    return `${startYear}年${startMonth}月—${endYear}年${endMonth}月`;
-  }
-
-  function incomeMonthSequence(start, end) {
-    const cursor = new Date(`${monthStartIso(start)}T00:00:00Z`);
-    const last = new Date(`${monthStartIso(end)}T00:00:00Z`);
-    const months = [];
-    while (cursor <= last) {
-      months.push(cursor.toISOString().slice(0, 7));
-      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-    }
-    return months;
-  }
-
-  function revenueGroupStats(currentSalesRows, priorSalesRows, currentIncomeRows, priorIncomeRows, dimension) {
-    const salesKey = dimension === "business" ? (row) => dimValue(row, "business") : (row) => dimValue(row, "channel");
-    const incomeKey = dimension === "business" ? (row) => row.business || "未标注" : (row) => row.channel || "未标注";
-    const currentSalesGroups = groupRows(currentSalesRows, salesKey);
-    const priorSalesGroups = groupRows(priorSalesRows, salesKey);
-    const currentIncomeGroups = groupRows(currentIncomeRows, incomeKey);
-    const priorIncomeGroups = groupRows(priorIncomeRows, incomeKey);
-    const names = new Set([...currentSalesGroups.keys(), ...currentIncomeGroups.keys()]);
-    return [...names].map((name) => {
-      const current = revenueSummary(currentSalesGroups.get(name) || [], currentIncomeGroups.get(name) || []);
-      const prior = revenueSummary(priorSalesGroups.get(name) || [], priorIncomeGroups.get(name) || []);
-      const hasPriorSales = priorSalesGroups.has(name);
-      const hasPriorIncome = priorIncomeGroups.has(name);
-      return {
-        name,
-        ...current,
-        prior,
-        hasPriorSales,
-        hasPriorIncome,
-        salesYoY: ratioChange(current.sales, prior.sales),
-        incomeYoY: ratioChange(current.income, prior.income),
-        rateChange: hasPriorSales && hasPriorIncome && Number.isFinite(current.financialRate) && Number.isFinite(prior.financialRate)
-          ? current.financialRate - prior.financialRate
-          : NaN,
-      };
-    }).sort((a, b) => b.sales - a.sales || b.income - a.income);
-  }
-
-  function aggregateRevenueItems(items, name) {
-    const salesAmount = items.reduce((sum, item) => sum + item.sales, 0);
-    const incomeAmount = items.reduce((sum, item) => sum + item.income, 0);
-    const taxEq = items.reduce((sum, item) => sum + item.incomeTaxEq, 0);
-    const priorSales = items.reduce((sum, item) => sum + Number(item.prior?.sales || 0), 0);
-    const priorIncome = items.reduce((sum, item) => sum + Number(item.prior?.income || 0), 0);
-    const priorTaxEq = items.reduce((sum, item) => sum + Number(item.prior?.incomeTaxEq || 0), 0);
-    const financialRate = salesAmount ? incomeAmount / salesAmount : NaN;
-    const priorFinancialRate = priorSales ? priorIncome / priorSales : NaN;
-    return {
-      name,
-      sales: salesAmount,
-      income: incomeAmount,
-      incomeTaxEq: taxEq,
-      financialRate,
-      comparableRate: salesAmount ? taxEq / salesAmount : NaN,
-      prior: {
-        sales: priorSales,
-        income: priorIncome,
-        incomeTaxEq: priorTaxEq,
-        financialRate: priorFinancialRate,
-      },
-      hasPriorSales: items.some((item) => item.hasPriorSales),
-      hasPriorIncome: items.some((item) => item.hasPriorIncome),
-      salesYoY: ratioChange(salesAmount, priorSales),
-      incomeYoY: ratioChange(incomeAmount, priorIncome),
-      rateChange: Number.isFinite(financialRate) && Number.isFinite(priorFinancialRate) ? financialRate - priorFinancialRate : NaN,
-    };
-  }
-
-  function renderIncomeMonthlyChart(months) {
-    if (!months.length) return '<div class="empty-state"><div class="empty-state-inner"><h2>当前月份无收入数据</h2><p>调整月份范围后再查看。</p></div></div>';
-    const width = 1120;
-    const height = 340;
-    const pad = { left: 62, right: 72, top: 36, bottom: 52 };
-    const plotWidth = width - pad.left - pad.right;
-    const plotHeight = height - pad.top - pad.bottom;
-    const maxAmount = Math.max(...months.flatMap((item) => [item.sales, item.income]), 1) / 10000;
-    const amountCeiling = Math.max(100, Math.ceil(maxAmount / 200) * 200);
-    const rateCeiling = Math.max(1, Math.ceil(Math.max(...months.map((item) => item.cumulativeFinancialRate || 0), 1) * 10) / 10);
-    const groupWidth = plotWidth / months.length;
-    const barWidth = Math.min(34, groupWidth * .24);
-    const amountY = (value) => pad.top + plotHeight - (value / amountCeiling) * plotHeight;
-    const rateY = (value) => pad.top + plotHeight - (value / rateCeiling) * plotHeight;
-    const ticks = [0, amountCeiling / 2, amountCeiling].map((tick) => {
-      const y = amountY(tick);
-      return `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" stroke="#dfe3e8"/><text x="${pad.left - 11}" y="${y + 4}" text-anchor="end" fill="#68707d" font-size="11">${tick.toFixed(0)}万</text>`;
-    }).join("");
-    const bars = months.map((item, index) => {
-      const center = pad.left + groupWidth * (index + .5);
-      const salesValue = item.sales / 10000;
-      const incomeValue = item.income / 10000;
-      const salesY = amountY(salesValue);
-      const incomeY = amountY(incomeValue);
-      return `<rect x="${center - barWidth - 3}" y="${salesY}" width="${barWidth}" height="${pad.top + plotHeight - salesY}" rx="4" fill="#ad1f2b" opacity=".88"/>
-        <rect x="${center + 3}" y="${incomeY}" width="${barWidth}" height="${pad.top + plotHeight - incomeY}" rx="4" fill="#376c87" opacity=".86"/>
-        <text x="${center - barWidth / 2 - 3}" y="${salesY - 7}" text-anchor="middle" fill="#861621" font-size="10" font-weight="700">${salesValue.toFixed(0)}</text>
-        <text x="${center + barWidth / 2 + 3}" y="${incomeY - 7}" text-anchor="middle" fill="#376c87" font-size="10" font-weight="700">${incomeValue.toFixed(0)}</text>
-        <text x="${center}" y="${height - 21}" text-anchor="middle" fill="#68707d" font-size="12">${Number(item.month.slice(5))}月</text>`;
-    }).join("");
-    const points = months.map((item, index) => [
-      pad.left + groupWidth * (index + .5),
-      rateY(item.cumulativeFinancialRate || 0),
-      item.cumulativeFinancialRate,
-    ]);
-    const line = `<polyline points="${points.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="#267364" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>`;
-    const dots = points.map(([x, y, value]) => `<circle cx="${x}" cy="${y}" r="4.5" fill="#267364" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y - 12}" text-anchor="middle" fill="#267364" font-size="11" font-weight="700">${formatRate(value)}</text>`).join("");
-    const yoyCards = months.map((item) => `<article>
-      <span>${Number(item.month.slice(5))}月收入</span>
-      <strong>${formatWan(item.income)}</strong>
-      <small>同期 ${Number.isFinite(item.priorIncome) ? formatWan(item.priorIncome) : "-"}</small>
-      <em class="${signClass(item.incomeYoY)}">同比 ${formatSignedPct(item.incomeYoY)} · ${formatSignedWan(item.incomeDelta)}</em>
-    </article>`).join("");
-    return `<div class="income-chart-legend"><span class="sales">销售</span><span class="income">不含税收入</span><span class="rate">累计销售到收入转化率</span></div><div class="chart-scroll"><svg class="income-monthly-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="销售、不含税收入与累计销售到收入转化率月度趋势">${ticks}${bars}${line}${dots}<text x="${width - pad.right + 10}" y="${pad.top + 4}" fill="#68707d" font-size="11">右轴 ${formatRate(rateCeiling)}</text></svg></div><div class="income-monthly-yoy-head"><strong>月度收入同比</strong><span>本期不含税收入 / 上年同期 / 同比与净增减</span></div><div class="income-monthly-yoy">${yoyCards}</div>`;
-  }
-
-  function renderIncome() {
-    if (!INCOME_DATA) return '<div class="empty-state"><div class="empty-state-inner"><h2>收入数据未读取</h2><p>请先运行收入数据构建脚本。</p></div></div>';
-    const periodStart = monthStartIso(state.start);
-    const periodEnd = monthEndIso(state.end) > INCOME_DATA.meta.incomeDateMax ? INCOME_DATA.meta.incomeDateMax : monthEndIso(state.end);
-    const priorStart = shiftYear(periodStart, -1);
-    const priorEnd = shiftYear(periodEnd, -1);
-    const currentSalesRows = salesRowsForIncomeRange(periodStart, periodEnd);
-    const priorSalesRows = salesRowsForIncomeRange(priorStart, priorEnd);
-    const currentIncomeRows = incomeRowsForRange(incomeCurrent, periodStart, periodEnd);
-    const priorIncomeRows = incomeRowsForRange(incomePrior, priorStart, priorEnd);
-    const current = revenueSummary(currentSalesRows, currentIncomeRows);
-    const prior = revenueSummary(priorSalesRows, priorIncomeRows);
-    const salesYoY = ratioChange(current.sales, prior.sales);
-    const incomeYoY = ratioChange(current.income, prior.income);
-    const financialRateChange = Number.isFinite(current.financialRate) && Number.isFinite(prior.financialRate) ? current.financialRate - prior.financialRate : NaN;
-    const conversionGapRate = Number.isFinite(financialRateChange) ? Math.max(0, -financialRateChange) : NaN;
-    const conversionGapAmount = Number.isFinite(conversionGapRate) ? current.sales * conversionGapRate : NaN;
-    const businessItems = revenueGroupStats(currentSalesRows, priorSalesRows, currentIncomeRows, priorIncomeRows, "business");
-    const channelItems = revenueGroupStats(currentSalesRows, priorSalesRows, currentIncomeRows, priorIncomeRows, "channel");
-    const periodLabel = incomePeriodLabel(periodStart, periodEnd);
-
-    const months = incomeMonthSequence(periodStart, periodEnd);
-    let cumulativeSales = 0;
-    let cumulativeIncome = 0;
-    const monthly = months.map((month) => {
-      const salesAmount = currentSalesRows.filter((row) => row.date.slice(0, 7) === month).reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      const rows = currentIncomeRows.filter((row) => row.month === month);
-      const incomeAmount = rows.reduce((sum, row) => sum + Number(row.income || 0), 0);
-      const incomeTaxEq = rows.reduce((sum, row) => sum + Number(row.incomeTaxEq || 0), 0);
-      const priorMonth = `${Number(month.slice(0, 4)) - 1}-${month.slice(5)}`;
-      const priorIncomeAmount = priorIncomeRows.filter((row) => row.month === priorMonth).reduce((sum, row) => sum + Number(row.income || 0), 0);
-      cumulativeSales += salesAmount;
-      cumulativeIncome += incomeAmount;
-      return {
-        month,
-        sales: salesAmount,
-        income: incomeAmount,
-        incomeTaxEq,
-        priorIncome: priorIncomeAmount,
-        incomeYoY: ratioChange(incomeAmount, priorIncomeAmount),
-        incomeDelta: incomeAmount - priorIncomeAmount,
-        cumulativeFinancialRate: cumulativeSales ? cumulativeIncome / cumulativeSales : NaN,
-      };
-    });
-
-    const businessRanking = businessItems.map((item) => {
-      return { ...item, incomeDelta: item.hasPriorIncome ? item.income - item.prior.income : NaN };
-    }).sort((a, b) => {
-      const aDelta = Number.isFinite(a.incomeDelta) ? a.incomeDelta : Infinity;
-      const bDelta = Number.isFinite(b.incomeDelta) ? b.incomeDelta : Infinity;
-      return aDelta - bDelta || b.income - a.income;
-    });
-    const businessRows = businessRanking.map((item, index) => {
-      const status = !Number.isFinite(item.incomeYoY) ? "无同期" : item.incomeYoY >= .05 ? "收入增长" : item.incomeYoY <= -.05 ? "收入下滑" : "收入基本持平";
-      const statusClass = status === "收入下滑" ? "risk" : status === "收入增长" ? "steady" : "watch";
-      return `<article class="income-business-row">
-        <span class="income-rank-index">${index + 1}</span>
-        <div class="income-business-name"><strong>${escapeHtml(item.name)}</strong><span class="income-judgment ${statusClass}">${escapeHtml(status)}</span></div>
-        <div><small>本期收入</small><strong>${formatWan(item.income)}</strong></div>
-        <div><small>同期收入</small><strong>${item.hasPriorIncome ? formatWan(item.prior.income) : "-"}</strong></div>
-        <div><small>收入同比</small><strong class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</strong></div>
-        <div><small>收入净增减</small><strong class="${signClass(item.incomeDelta)}">${formatSignedWan(item.incomeDelta)}</strong></div>
-        <div><small>本期转化率</small><strong>${formatRate(item.financialRate)}</strong></div>
-        <div><small>转化同比</small><strong class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</strong></div>
-      </article>`;
-    }).join("");
-
-    const topChannels = channelItems.slice(0, 8);
-    if (channelItems.length > 8) {
-      const other = aggregateRevenueItems(channelItems.slice(8), "其他（含不可拆分同期）");
-      const topPriorSales = topChannels.reduce((sum, item) => sum + (item.hasPriorIncome ? Number(item.prior?.sales || 0) : 0), 0);
-      const topPriorIncome = topChannels.reduce((sum, item) => sum + Number(item.prior?.income || 0), 0);
-      const topPriorTaxEq = topChannels.reduce((sum, item) => sum + Number(item.prior?.incomeTaxEq || 0), 0);
-      other.prior.sales = Math.max(0, prior.sales - topPriorSales);
-      other.prior.income = prior.income - topPriorIncome;
-      other.prior.incomeTaxEq = prior.incomeTaxEq - topPriorTaxEq;
-      other.prior.financialRate = other.prior.sales ? other.prior.income / other.prior.sales : NaN;
-      other.hasPriorSales = true;
-      other.hasPriorIncome = true;
-      other.salesYoY = ratioChange(other.sales, other.prior.sales);
-      other.incomeYoY = ratioChange(other.income, other.prior.income);
-      other.rateChange = Number.isFinite(other.financialRate) && Number.isFinite(other.prior.financialRate)
-        ? other.financialRate - other.prior.financialRate
-        : NaN;
-      topChannels.push(other);
-    }
-    const channelViews = topChannels.map((item) => {
-      const judgment = !Number.isFinite(item.incomeYoY)
-        ? "无同期"
-        : item.incomeYoY >= .05
-          ? "收入增长"
-          : item.incomeYoY <= -.05
-            ? "收入下滑"
-            : "收入基本持平";
-      const judgmentClass = judgment === "收入下滑" ? "risk" : judgment === "收入增长" ? "steady" : "watch";
-      const priorSalesCell = item.hasPriorSales ? formatWan(item.prior.sales) : "-";
-      const priorIncomeCell = item.hasPriorIncome ? formatWan(item.prior.income) : "-";
-      const priorRateCell = item.hasPriorSales && item.hasPriorIncome ? formatRate(item.prior.financialRate) : "-";
-      const incomeDelta = item.hasPriorIncome ? item.income - item.prior.income : NaN;
-      return { item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell, incomeDelta };
-    });
-    const channelDiagnosticRows = channelViews.map(({ item, judgment, judgmentClass, priorIncomeCell, incomeDelta }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatWan(item.income)}</td><td>${priorIncomeCell}</td><td class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</td><td class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</td><td>${formatRate(item.financialRate)}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
-    const channelFullRows = channelViews.map(({ item, judgment, judgmentClass, priorSalesCell, priorIncomeCell, priorRateCell, incomeDelta }) => `<tr><td>${escapeHtml(item.name)}</td><td>${formatWan(item.sales)}</td><td>${priorSalesCell}</td><td class="${signClass(item.salesYoY)}">${formatSignedPct(item.salesYoY)}</td><td>${formatWan(item.income)}</td><td>${priorIncomeCell}</td><td class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</td><td class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</td><td>${formatRate(item.financialRate)}</td><td>${priorRateCell}</td><td class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</td><td><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></td></tr>`);
-    const channelCards = channelViews.map(({ item, judgment, judgmentClass, priorIncomeCell, incomeDelta }) => `<article class="income-channel-card">
-      <div class="income-channel-card-head"><strong>${escapeHtml(item.name)}</strong><span class="income-judgment ${judgmentClass}">${escapeHtml(judgment)}</span></div>
-      <dl><div><dt>本期收入</dt><dd>${formatWan(item.income)}</dd></div><div><dt>同期收入</dt><dd>${priorIncomeCell}</dd></div><div><dt>收入同比</dt><dd class="${signClass(item.incomeYoY)}">${formatSignedPct(item.incomeYoY)}</dd></div><div><dt>收入净增减</dt><dd class="${signClass(incomeDelta)}">${formatSignedWan(incomeDelta)}</dd></div><div><dt>本期转化率</dt><dd>${formatRate(item.financialRate)}</dd></div><div><dt>转化同比</dt><dd class="${signClass(item.rateChange)}">${Number.isFinite(item.rateChange) ? formatSignedPoint(item.rateChange).replace("pct", "pp") : "-"}</dd></div></dl>
-    </article>`).join("");
-
-    return `<div class="income-page">
-      <section class="income-analysis-header">
-        <div><p class="eyebrow">Revenue Analysis 5.1</p><h2>收入经营四层分析</h2></div>
-        <p>${escapeHtml(periodLabel)} · 先看结果，再沿月度、业务部和渠道定位差距。</p>
-      </section>
-      <nav class="income-analysis-path" aria-label="收入分析路径">
-        <a href="#income-result-layer"><span>1</span><strong>结果</strong><small>规模与转化</small></a>
-        <a href="#income-monthly-trend"><span>2</span><strong>趋势</strong><small>月度节奏</small></a>
-        <a href="#income-business-drivers"><span>3</span><strong>业务部</strong><small>问题定位</small></a>
-        <a href="#income-channel-conversion"><span>4</span><strong>渠道</strong><small>落到对象</small></a>
-      </nav>
-      <section class="income-result-grid" id="income-result-layer">
-        <article><small>累计销售</small><strong>${formatWan(current.sales)}</strong><span class="${signClass(salesYoY)}">同比 ${formatSignedPct(salesYoY)}</span></article>
-        <article><small>累计不含税收入</small><strong>${formatWan(current.income)}</strong><span>同期 ${formatWan(prior.income)}</span><span class="${signClass(incomeYoY)}">同比 ${formatSignedPct(incomeYoY)} · ${formatSignedWan(current.income - prior.income)}</span></article>
-        <article><small>销售到收入转化率</small><strong>${formatRate(current.financialRate)}</strong><span>同期 ${formatRate(prior.financialRate)}</span><span class="${signClass(financialRateChange)}">同比 ${Number.isFinite(financialRateChange) ? formatSignedPoint(financialRateChange).replace("pct", "pp") : "-"}</span></article>
-        <article class="income-gap-card"><small>转化缺口参考</small><strong>${Number.isFinite(conversionGapAmount) ? formatWan(conversionGapAmount) : "-"}</strong><span>按本期销售 × 同期转化率差</span></article>
-      </section>
-      <details class="income-method-note"><summary>口径与时滞说明</summary><div><p><strong>销售到收入转化率</strong>＝不含税收入 ÷ 含税销售额。</p><p>${escapeHtml(INCOME_DATA.meta.timingNote)}</p><p>“转化缺口参考”仅是同口径估算，不等同于可直接追回的实际收入。</p></div></details>
-      <section class="content-grid income-content-grid">
-        ${panel("② 销售到收入月度节奏", "柱形看销售与收入、折线看累计转化率；下方逐月对照同期收入、同比和净增减", renderIncomeMonthlyChart(monthly), "income-monthly-trend", { className: "span-2" })}
-        ${panel("③ 业务部收入增减", "按收入净增减从低到高排列；先看本期、同期、同比和净增减，再用转化率解释", `<div class="income-business-ranking">${businessRows}</div>`, "income-business-drivers", { className: "span-2" })}
-        ${panel("④ 渠道收入落点", "销售前8渠道＋其他；主视图先看收入同期增减，再看转化率及其同比变化", `<div class="income-channel-desktop">${table(["渠道", "本期收入", "同期收入", "收入同比", "收入净增减", "本期转化率", "转化同比", "经营判断"], channelDiagnosticRows, 1020)}</div><div class="income-channel-mobile">${channelCards}</div><details class="income-detail-disclosure"><summary>查看销售与完整口径</summary>${table(["渠道", "本期销售", "同期销售", "销售同比", "本期收入", "同期收入", "收入同比", "收入净增减", "本期转化率", "同期转化率", "转化同比", "经营判断"], channelFullRows, 1440)}</details>`, "income-channel-conversion", { className: "span-2" })}
-      </section>
-    </div>`;
-  }
-
   function renderChannel() {
     const currentRows = salesForRange(state.start, state.end);
     const priorRows = salesForRange(shiftYear(state.start, -1), shiftYear(state.end, -1));
@@ -3181,7 +2833,7 @@ if (window.WATER_HEATER_DATA_READY) {
       const frame = document.getElementById("selfBiFrame");
       if (!frame.hasAttribute("src")) {
         const assetVersion = new URL(import.meta.url).searchParams.get("v") || "local";
-        const snapshotVersion = `${assetVersion}-${DATA.meta.generatedAt}-${DATA.meta.salesDateMax}-${INCOME_DATA?.meta?.generatedAt || ""}`;
+        const snapshotVersion = `${assetVersion}-${DATA.meta.generatedAt}-${DATA.meta.salesDateMax}`;
         frame.src = `./self-bi/?embedded=1&v=${encodeURIComponent(snapshotVersion)}`;
       }
       if (aiState.open) renderAiPanel();
@@ -3192,9 +2844,19 @@ if (window.WATER_HEATER_DATA_READY) {
     if (state.tab === "category") content.innerHTML = renderCategory();
     if (state.tab === "store") content.innerHTML = renderStore();
     if (state.tab === "core") content.innerHTML = renderCore();
-    if (state.tab === "industry") content.innerHTML = renderIndustry();
+    if (state.tab === "industry") {
+      if (!oviReady) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>正在加载奥维市场数据…</h2><p>销售看板已就绪，市场明细按需读取。</p></div></div>';
+        ensureOviRows().then(() => { if (state.tab === "industry") renderDashboard(); }).catch(() => {
+          if (state.tab !== "industry") return;
+          content.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><h2>奥维市场数据加载失败</h2><button type="button" id="retryOvi">重试加载</button></div></div>';
+          document.getElementById("retryOvi").addEventListener("click", renderDashboard);
+        });
+        return;
+      }
+      content.innerHTML = renderIndustry();
+    }
     if (state.tab === "channel") content.innerHTML = renderChannel();
-    if (state.tab === "income") content.innerHTML = renderIncome();
     attachDynamicEvents();
     renderFilterSummary();
     if (aiState.open) renderAiPanel();
@@ -3263,6 +2925,11 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function renderAiPanel() {
     const aiPanel = document.getElementById("ai-panel");
+    if (aiState.loadingOvi) {
+      aiPanel.hidden = false;
+      aiPanel.innerHTML = '<div class="ai-panel-header"><div><p class="eyebrow">GTM AI COPILOT</p><h2>正在准备市场数据…</h2><p>销售数据已就绪，奥维明细仅在需要 AI 分析时加载。</p></div></div>';
+      return;
+    }
     const rows = salesForRange(state.start, state.end);
     const chat = aiState.chat || chatController.getState();
     const messages = chat.messages || [];
@@ -3344,8 +3011,21 @@ if (window.WATER_HEATER_DATA_READY) {
     });
   }
 
-  function openAiPanel() {
+  async function openAiPanel() {
     aiState.open = true;
+    aiState.loadingOvi = !oviReady;
+    if (aiState.loadingOvi) renderAiPanel();
+    try {
+      await ensureOviRows();
+      refreshChatController();
+    } catch (error) {
+      aiState.loadingOvi = false;
+      const panel = document.getElementById("ai-panel");
+      panel.innerHTML = '<div class="ai-panel-header"><div><h2>市场数据加载失败</h2><p>请检查网络后重试。</p></div><button type="button" id="retryAiOvi">重试加载</button></div>';
+      document.getElementById("retryAiOvi").addEventListener("click", openAiPanel);
+      return;
+    }
+    aiState.loadingOvi = false;
     aiState.chat = chatController.getState();
     renderAiPanel();
     document.getElementById("ai-panel").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3353,37 +3033,21 @@ if (window.WATER_HEATER_DATA_READY) {
 
   function updateFilterContext() {
     const overviewMode = state.tab === "overview";
-    const incomeMode = state.tab === "income";
     const industryMode = state.tab === "industry";
     const modelMode = state.tab === "core";
     ["channelFilter", "businessFilter"].forEach((id) => {
       document.getElementById(id).hidden = overviewMode;
     });
     ["shapeFilter", "seriesFilter"].forEach((id) => {
-      document.getElementById(id).hidden = overviewMode || incomeMode;
+      document.getElementById(id).hidden = overviewMode;
     });
-    document.getElementById("positionFilter").hidden = overviewMode || industryMode || incomeMode;
-    document.getElementById("coreFilter").hidden = overviewMode || modelMode || incomeMode;
+    document.getElementById("positionFilter").hidden = overviewMode || industryMode;
+    document.getElementById("coreFilter").hidden = overviewMode || modelMode;
     document.getElementById("resetFilters").hidden = overviewMode;
     document.getElementById("globalFilterPanel").classList.toggle("overview-filter-mode", overviewMode);
-    document.getElementById("globalFilterPanel").classList.toggle("income-filter-mode", incomeMode);
-    const filterPanel = document.getElementById("globalFilterPanel");
-    if (incomeMode && !filterPanel.dataset.incomeCompactInitialized) {
-      const body = document.getElementById("filterPanelBody");
-      const toggle = document.getElementById("toggleFilters");
-      filterPanel.dataset.incomeCompactInitialized = "true";
-      body.hidden = true;
-      filterPanel.classList.add("collapsed");
-      toggle.setAttribute("aria-expanded", "false");
-      toggle.textContent = "显示筛选";
-    }
     document.body.classList.toggle("overview-active", overviewMode);
-    document.body.classList.toggle("income-active", incomeMode);
-    document.querySelector("#globalFilterPanel h2").textContent = overviewMode ? "总览截止日" : incomeMode ? "收入筛选" : "全局筛选";
-    document.querySelector("#globalFilterPanel .filter-panel-actions > span").textContent = overviewMode ? "固定呈现年累、当月和滚动30天" : incomeMode ? "按完整审核月份、业务部和渠道更新" : "所有模块同步更新";
-    document.querySelectorAll('[data-date-preset="last7"], [data-date-preset="last30"]').forEach((button) => { button.hidden = incomeMode; });
-    const rangeMin = incomeMode ? incomeDefaultStart : DATA.meta.salesDateMin;
-    const rangeMax = incomeMode ? incomeDefaultEnd : DATA.meta.salesDateMax;
+    document.querySelector("#globalFilterPanel h2").textContent = overviewMode ? "总览截止日" : "全局筛选";
+    document.querySelector("#globalFilterPanel .filter-panel-actions > span").textContent = overviewMode ? "固定呈现年累、当月和滚动30天" : "所有模块同步更新";
     const startInput = document.getElementById("startDate");
     const endInput = document.getElementById("endDate");
     const startField = startInput.closest(".field");
@@ -3392,10 +3056,10 @@ if (window.WATER_HEATER_DATA_READY) {
     startField.hidden = overviewMode;
     quickDateRow.hidden = overviewMode;
     endField.querySelector("span").textContent = overviewMode ? "分析截止日" : "结束日期";
-    startInput.min = rangeMin;
-    startInput.max = rangeMax;
-    endInput.min = rangeMin;
-    endInput.max = rangeMax;
+    startInput.min = DATA.meta.salesDateMin;
+    startInput.max = DATA.meta.salesDateMax;
+    endInput.min = DATA.meta.salesDateMin;
+    endInput.max = DATA.meta.salesDateMax;
     startInput.value = state.start;
     endInput.value = state.end;
   }
@@ -3408,7 +3072,6 @@ if (window.WATER_HEATER_DATA_READY) {
     }
     tabs.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
       const nextTab = button.dataset.tab;
-      switchDateContext(nextTab);
       state.tab = nextTab;
       const viewUrl = new URL(location.href);
       viewUrl.searchParams.set("tab", nextTab);
@@ -3488,15 +3151,6 @@ if (window.WATER_HEATER_DATA_READY) {
       document.getElementById("filterSummary").textContent = `当前明细范围命中 ${formatInteger(total)} 行有效销售记录；顶部销售进度锚定结束日，全年累计至 ${state.end}，当月目标：${monthCovered ? anchorMonth : "未维护"}。`;
       return;
     }
-    if (state.tab === "income") {
-      const periodStart = monthStartIso(state.start);
-      const periodEnd = monthEndIso(state.end) > incomeDefaultEnd ? incomeDefaultEnd : monthEndIso(state.end);
-      const salesRows = salesRowsForIncomeRange(periodStart, periodEnd);
-      const rows = incomeRowsForRange(incomeCurrent, periodStart, periodEnd);
-      const active = ["business", "channel"].filter((key) => state.selections[key].size !== FILTERS[key].options.length).map((key) => FILTERS[key].label);
-      document.getElementById("filterSummary").textContent = `收入按完整审核月份统计：${periodStart.slice(0, 7)} 至 ${periodEnd.slice(0, 7)}；命中 ${formatInteger(salesRows.length)} 行销售、${formatInteger(rows.length)} 组收入汇总${active.length ? `；已限制：${active.join("、")}` : "；业务部和渠道均为全部"}。`;
-      return;
-    }
     if (state.tab === "industry") {
       const { rows, fallback } = oviWindow();
       const lower = Math.min(state.priceLower, state.priceUpper);
@@ -3516,15 +3170,10 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function resetFilters() {
-    state.start = state.tab === "income" ? incomeDefaultStart : defaultStart;
-    state.end = state.tab === "income" ? incomeDefaultEnd : maxDate;
-    if (state.tab === "income") {
-      state.incomeStart = state.start;
-      state.incomeEnd = state.end;
-    } else {
-      state.salesStart = state.start;
-      state.salesEnd = state.end;
-    }
+    state.start = defaultStart;
+    state.end = maxDate;
+    state.salesStart = state.start;
+    state.salesEnd = state.end;
     state.priceLower = 2000;
     state.priceUpper = 4000;
     state.storeSelected = "";
@@ -3547,8 +3196,8 @@ if (window.WATER_HEATER_DATA_READY) {
   }
 
   function setDatePreset(preset) {
-    const contextMaxDate = state.tab === "income" ? incomeDefaultEnd : maxDate;
-    const contextMinDate = state.tab === "income" ? incomeDefaultStart : DATA.meta.salesDateMin;
+    const contextMaxDate = maxDate;
+    const contextMinDate = DATA.meta.salesDateMin;
     const [year, month] = contextMaxDate.split("-").map(Number);
     if (preset === "month") {
       state.start = `${contextMaxDate.slice(0, 7)}-01`;
@@ -3566,19 +3215,10 @@ if (window.WATER_HEATER_DATA_READY) {
       state.start = toIso(new Date(Date.UTC(year, month - 2, 1)));
       state.end = toIso(new Date(Date.UTC(year, month - 1, 0)));
     }
-    if (state.tab === "income") {
-      state.start = monthStartIso(state.start);
-      state.end = monthEndIso(state.end);
-    }
     if (state.start < contextMinDate) state.start = contextMinDate;
     if (state.end > contextMaxDate) state.end = contextMaxDate;
-    if (state.tab === "income") {
-      state.incomeStart = state.start;
-      state.incomeEnd = state.end;
-    } else {
-      state.salesStart = state.start;
-      state.salesEnd = state.end;
-    }
+    state.salesStart = state.start;
+    state.salesEnd = state.end;
     syncDateInputs();
     renderDashboard();
   }
@@ -3834,8 +3474,6 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderMethodology() {
     const items = [
       ["销售来源", `${DATA.meta.files[1]}；${DATA.meta.files[2]}。有效日期 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax}。`],
-      ["收入来源", `${INCOME_DATA?.meta?.sources?.join("；") || "未加载"}。当前收入审核覆盖 ${INCOME_DATA?.meta?.incomeMonthMin || "-"} 至 ${INCOME_DATA?.meta?.incomeMonthMax || "-"}。`],
-      ["收入转化率", "销售到收入转化率＝不含税收入÷含税销售额。销售按支付时间、收入按审核月份归集，单月可能受审核时滞影响，经营判断以累计口径为主。"],
       ["店铺维度", "店铺取销售 Excel 的客户字段，优先使用“客户名称”，缺失时回退“客户/店铺/客户编号”；渠道为“天猫官旗”的全部客户统一归并为“方太官方旗舰店（天猫）”；店铺内占比为型号销售额 ÷ 所选店铺销售额。"],
       ["产品分类", `${DATA.meta.files[0]}。系列、核心品、形态分类、定位、能效均直接取索引表。`],
       ["政策价来源", "直接取销售明细中的“通用政策价(元)”字段，不再使用旧政策价参照表按月份和产品名称匹配。"],
@@ -3848,7 +3486,7 @@ if (window.WATER_HEATER_DATA_READY) {
       ["运行时派生指标", "价格指数、渠道占比和产品贡献度均由JS实时计算，不写入数据源；因缺少成本字段，不推算毛利。"],
       ["AI分析上下文", "DeepSeek负责查询规划与结果解释；本地引擎执行白名单筛选、聚合、对比和异常计算，仅发送压缩结果，不发送完整原始明细。"],
       ["AI密钥安全", "前端不保存API Key；部署后由Netlify环境变量DEEPSEEK_API_KEY注入Function代理。"],
-      ["缺失处理", "成本、费用、渠道目标、目标市占、销售侧升数与区域等未提供字段不推算；收入只展示已审核月份。"],
+      ["缺失处理", "成本、费用、渠道目标、目标市占、销售侧升数与区域等未提供字段不推算。"],
     ];
     document.getElementById("methodology").innerHTML = items.map(([title, text]) => `<div class="method-item"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span></div>`).join("");
   }
@@ -3898,30 +3536,17 @@ if (window.WATER_HEATER_DATA_READY) {
   startInput.value = state.start;
   endInput.value = state.end;
   startInput.addEventListener("change", () => {
-    state.start = state.tab === "income" ? monthStartIso(startInput.value) : startInput.value;
+    state.start = startInput.value;
     if (state.start > state.end) { state.end = state.start; endInput.value = state.end; }
-    if (state.tab === "income") {
-      state.incomeStart = state.start;
-      state.incomeEnd = state.end;
-      syncDateInputs();
-    } else {
-      state.salesStart = state.start;
-      state.salesEnd = state.end;
-    }
+    state.salesStart = state.start;
+    state.salesEnd = state.end;
     renderDashboard();
   });
   endInput.addEventListener("change", () => {
-    state.end = state.tab === "income" ? monthEndIso(endInput.value) : endInput.value;
-    if (state.tab === "income" && state.end > incomeDefaultEnd) state.end = incomeDefaultEnd;
+    state.end = endInput.value;
     if (state.end < state.start) { state.start = state.end; startInput.value = state.start; }
-    if (state.tab === "income") {
-      state.incomeStart = state.start;
-      state.incomeEnd = state.end;
-      syncDateInputs();
-    } else {
-      state.salesStart = state.start;
-      state.salesEnd = state.end;
-    }
+    state.salesStart = state.start;
+    state.salesEnd = state.end;
     renderDashboard();
   });
   document.querySelectorAll("[data-date-preset]").forEach((button) => {
@@ -3942,12 +3567,9 @@ if (window.WATER_HEATER_DATA_READY) {
     if (shouldHide) document.querySelectorAll(".filter-menu").forEach((menu) => { menu.hidden = true; });
   });
 
-  document.getElementById("sourceLine").textContent = `数据快照 ${DATA.meta.generatedAt} · 销售 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax} · 收入 ${INCOME_DATA?.meta?.incomeMonthMax || "-"} · 奥维 ${DATA.meta.oviMonthMax || "-"} · 价格 ${DATA.meta.priceMonitorDateMax || "-"}`;
+  document.getElementById("sourceLine").textContent = `数据快照 ${DATA.meta.generatedAt} · 销售 ${DATA.meta.salesDateMin} 至 ${DATA.meta.salesDateMax} · 奥维 ${DATA.meta.oviMonthMax || "-"} · 价格 ${DATA.meta.priceMonitorDateMax || "-"}`;
   document.getElementById("freshnessPill").textContent = `销售截止 ${DATA.meta.salesDateMax}`;
-  chatController.setOnChange((snapshot) => {
-    aiState.chat = snapshot;
-    if (aiState.open) renderAiPanel();
-  });
+  bindChatController();
 
   renderTabs();
   renderMultiFilter("channelFilter", "channel");

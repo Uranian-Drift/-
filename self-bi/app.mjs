@@ -1,7 +1,7 @@
-import {createDatasets,filterRows,pivot,getMetric,chartAggregate,chartDisplay,comparisonPivot,emptyBucket,addRow} from './engine.mjs?v=20261104-133755';
+import {createDatasets,filterRows,pivot,getMetric,chartAggregate,chartDisplay,comparisonPivot,emptyBucket,addRow} from './engine.mjs?v=20261104-174833';
 
-const source=window.WATER_HEATER_DATA,income=window.WATER_HEATER_INCOME_DATA;
-const datasets=createDatasets(source,income);
+const source=window.WATER_HEATER_DATA;
+const datasets=createDatasets(source);
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=(v,d=0)=>new Intl.NumberFormat('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
@@ -18,8 +18,8 @@ function field(id){return dimension(id)||measure(id);}
 function defaultState(ds){
   const year=ds.timeMax.slice(0,4);
   const dateStart=ds.id==='target'?ds.rows[0]?.[0]?.slice(0,7)+'-01':ds.id==='price'?ds.timeMin:year+'-01-01';
-  const cols=ds.id==='sales'||ds.id==='income'||ds.id==='market'?['quarter']:[...ds.defaults.cols];
-  return {dataset:ds.id,rows:[...ds.defaults.rows],cols,measures:[...ds.defaults.measures],filters:[],dateStart,dateEnd:ds.timeMax.length===7?monthEnd(ds.timeMax):ds.timeMax,sort:'desc',sortBy:null,unit:'wan',compare:['sales','income','market'].includes(ds.id)?'yoy':'none',chart:{...ds.defaults.chart},title:'经营数据即席分析'};
+  const cols=ds.id==='sales'||ds.id==='market'?['quarter']:[...ds.defaults.cols];
+  return {dataset:ds.id,rows:[...ds.defaults.rows],cols,measures:[...ds.defaults.measures],filters:[],dateStart,dateEnd:ds.timeMax.length===7?monthEnd(ds.timeMax):ds.timeMax,sort:'desc',sortBy:null,unit:'wan',compare:['sales','market'].includes(ds.id)?'yoy':'none',chart:{...ds.defaults.chart},title:'经营数据即席分析'};
 }
 function validState(ds,s){
   const d=new Set(ds.dimensions.map(f=>f.id)),m=new Set(ds.measures.map(f=>f.id));
@@ -87,7 +87,7 @@ function compareValue(id,current,prior){
 }
 function metricOrZero(bucket,id,total){
   if(bucket)return getMetric(dataset,bucket,id,total);
-  return ['amount','income','incomeTaxEq','qty','sales','accounting','recordCount'].includes(id)?0:null;
+  return ['amount','qty','sales','accounting','recordCount'].includes(id)?0:null;
 }
 function compareGroup(row){
   if(!comparison?.available)return null;
@@ -103,7 +103,7 @@ function renderQuickRanges(){
   $('quickRanges').innerHTML=ranges.map(r=>`<button class="quick-range ${state.dateStart===r.from&&state.dateEnd===r.to?'active':''}" data-range="${r.id}" data-from="${r.from}" data-to="${r.to}">${r.label}</button>`).join('');
 }
 function renderCards(){
-  const b=pivotData.all,ids=dataset.id==='sales'?['amount','qty','avgPrice','salesIndex']:dataset.id==='income'?['income','incomeTaxEq','qty','unitIncome']:dataset.id==='market'?['sales','qty','avgPrice','recordCount']:dataset.id==='target'?['amount','qty','unitTarget','recordCount']:['meanPrice','minPrice','maxPrice','recordCount'];
+  const b=pivotData.all,ids=dataset.id==='sales'?['amount','qty','avgPrice','salesIndex']:dataset.id==='market'?['sales','qty','avgPrice','recordCount']:dataset.id==='target'?['amount','qty','unitTarget','recordCount']:['meanPrice','minPrice','maxPrice','recordCount'];
   $('metricCards').innerHTML=ids.map(id=>{
     const current=getMetric(dataset,b,id,b),prior=comparison?.available?getMetric(dataset,comparison.pivot.all,id,comparison.pivot.all):null;
     const foot=state.compare==='none'?measure(id)?.note||'当前筛选范围':comparison?.available?`${compareLabel()} ${formatValue(id,prior,{short:true})} · ${measure(id)?.format==='index'?'净值差 ':''}${compareValue(id,current,prior)}`:`${compareLabel()}数据不足`;
@@ -196,7 +196,7 @@ function renderPivot(){
   $('tableSummary').textContent=`${num(allRows.length)} 个末级组合 · ${num(allCols.length)} 列组合 · 点击表头排序${state.rows.length>1?' · 点击小计可收起/展开':''}`;
   $('tableFoot').textContent=(visibleRows.length>rows.length||allCols.length>cols.length?`页面显示前 ${rows.length} 行、前 ${cols.length} 列组合；导出包含全部组合。`:'')+' 对比按所选日期同窗计算；'+(state.measures.includes('salesIndex')?'净销量、销售额或核算价金额合计非正时，销售指数显示「—」；悬停可核对分子分母。':'空值或分母为 0 显示「—」。');
 }
-function detailFields(){return dataset.id==='sales'?['date','shape','series','model','channel','business','store']:dataset.id==='income'?['month','business','channel']:dataset.id==='market'?['month','brand','model','volumeSegment','priceBand']:dataset.id==='target'?['month','shape','model']:['date','brand','model','benchmark'];}
+function detailFields(){return dataset.id==='sales'?['date','shape','series','model','channel','business','store']:dataset.id==='market'?['month','brand','model','volumeSegment','priceBand']:dataset.id==='target'?['month','shape','model']:['date','brand','model','benchmark'];}
 function detailRows(){return drillScope?filtered.filter(row=>drillScope.parts.every((part,i)=>String(dataset.get(row,state.rows[i]))===part)):filtered;}
 function renderDetail(){
   const records=detailRows();
@@ -247,7 +247,7 @@ function renderChart(){
 function renderAll(){
   renderDatasetList();renderFields();renderZones();renderQuickRanges();
   $('sourceStrip').textContent=`${dataset.label}｜${dataset.note}`;
-  $('footerSource').textContent=`快照生成 ${dataset.id==='income'?income.meta.generatedAt:source.meta.generatedAt} · 覆盖 ${timeLabel(dataset)}`;
+  $('footerSource').textContent=`快照生成 ${source.meta.generatedAt} · 覆盖 ${timeLabel(dataset)}`;
   $('viewTitle').textContent=state.title||'经营数据即席分析';
   $('viewSubtitle').textContent=`${dataset.label} · ${dataset.grain}`;
   filtered=filterRows(dataset,state);pivotData=pivot(dataset,filtered,state);comparison=comparisonPivot(dataset,state);
@@ -282,7 +282,21 @@ function removeField(id,zone){
   if(zone==='rows')collapsedRows.clear();
   renderAll();
 }
-function switchDataset(id){if(!datasets[id])return;saveStateToMap();dataset=datasets[id];state=states.has(id)?validState(dataset,states.get(id)):defaultState(dataset);drillScope=null;collapsedRows.clear();$('fieldSearch').value='';renderAll();toast(`已切换到「${dataset.label}」`);}
+async function switchDataset(id){
+  if(!datasets[id])return false;
+  if(id==='market'&&!source.ovi.length){
+    if(typeof window.ensureOviData!=='function'){toast('奥维数据加载器不可用');$('datasetSelect').value=dataset.id;return false;}
+    $('datasetSelect').disabled=true;
+    $('datasetMeta').textContent='正在加载奥维市场明细…';
+    try{
+      const rows=await window.ensureOviData();
+      if(!Array.isArray(rows)||!rows.length)throw new Error('奥维明细为空');
+      source.ovi=rows;datasets.market.rows=rows;
+    }catch(error){toast('奥维数据加载失败，请重试');$('datasetSelect').value=dataset.id;renderDatasetList();return false;}
+    finally{$('datasetSelect').disabled=false;}
+  }
+  saveStateToMap();dataset=datasets[id];state=states.has(id)?validState(dataset,states.get(id)):defaultState(dataset);drillScope=null;collapsedRows.clear();$('fieldSearch').value='';renderAll();toast(`已切换到「${dataset.label}」`);return true;
+}
 function showModal(title,body,actions=[]){
   if(modalCleanup){modalCleanup();modalCleanup=null;}
   $('modalTitle').textContent=title;$('modalBody').innerHTML=body;
@@ -290,12 +304,11 @@ function showModal(title,body,actions=[]){
   $('overlay').classList.remove('hidden');$('modal').classList.remove('hidden');
 }
 function closeModal(){if(modalCleanup){modalCleanup();modalCleanup=null;}$('overlay').classList.add('hidden');$('modal').classList.add('hidden');}
-function sourceModal(){showModal(`${dataset.label} · 数据与口径`,`<p>${esc(dataset.note)}</p><dl class="info-grid"><dt>数据来源</dt><dd>${esc(dataset.source)}</dd><dt>数据粒度</dt><dd>${esc(dataset.grain)}</dd><dt>覆盖范围</dt><dd>${esc(timeLabel(dataset))}</dd><dt>记录条数</dt><dd>${num(dataset.rows.length)} 行</dd><dt>快照生成</dt><dd>${dataset.id==='income'?income.meta.generatedAt:source.meta.generatedAt}</dd><dt>指标公式</dt><dd>${dataset.measures.filter(m=>m.note).map(m=>`${esc(m.label)}：${esc(m.note)}`).join('<br>')}</dd></dl><p style="margin-top:14px;color:#9a6d73">本工作台直接使用 5.1 当前数据快照。刷新 5.1 的数据并重新打开页面后，这里会同步更新。</p>`,[{id:'close',label:'知道了',primary:true}]);}
+function sourceModal(){showModal(`${dataset.label} · 数据与口径`,`<p>${esc(dataset.note)}</p><dl class="info-grid"><dt>数据来源</dt><dd>${esc(dataset.source)}</dd><dt>数据粒度</dt><dd>${esc(dataset.grain)}</dd><dt>覆盖范围</dt><dd>${esc(timeLabel(dataset))}</dd><dt>记录条数</dt><dd>${num(dataset.rows.length)} 行</dd><dt>快照生成</dt><dd>${source.meta.generatedAt}</dd><dt>指标公式</dt><dd>${dataset.measures.filter(m=>m.note).map(m=>`${esc(m.label)}：${esc(m.note)}`).join('<br>')}</dd></dl><p style="margin-top:14px;color:#9a6d73">本工作台直接使用 5.1 当前数据快照。刷新 5.1 的数据并重新打开页面后，这里会同步更新。</p>`,[{id:'close',label:'知道了',primary:true}]);}
 function helpModal(){showModal('如何使用自助工作台',`<p>1. 左侧选择数据集；拖拽字段到「行维度」「列维度」「统计指标」「筛选字段」。直接点击左侧字段可快速加入行或指标。</p><p>2. 日期范围和筛选字段共同决定分析样本。同比同窗按去年相同起止日期计算；上期按相同天数或月数计算。若数据覆盖不足，显示「—」。</p><p>3. 透视表可逐级展开小计；点击任意指标表头可排序，再点一次切换方向；点「明细」查看组成记录。图表超出展示上限的分类会汇入「其他」。</p><p>4. 保存视图会把配置留在本机浏览器；导出 CSV 可在 Excel 中打开。切换数据集不会把不同口径的数据拼接在一起。</p>`,[{id:'close',label:'开始使用',primary:true}]);}
 function templateModal(){
   const presets={
     sales:[['形态与季度经营',['shape','series'],['quarter'],['amount','qty','avgPrice'],'shape','amount','quarter'],['渠道月度趋势',['channel'],['month'],['amount','qty','salesIndex'],'month','amount','channel'],['型号与渠道结构',['model'],['channel'],['amount','qty','amountShare'],'model','amount','channel']],
-    income:[['业务部季度收入',['business'],['quarter'],['income','qty','unitIncome'],'business','income','quarter'],['渠道月度归集',['channel'],['month'],['income','incomeTaxEq'],'month','income','channel']],
     market:[['品牌市场表现',['brand'],['quarter'],['sales','qty','salesShare'],'brand','sales','quarter'],['价位段月度结构',['priceBand'],['month'],['sales','qty','avgPrice'],'month','sales','priceBand'],['品牌与升数段',['brand'],['volumeSegment'],['sales','qty','salesShare'],'brand','sales','volumeSegment']],
     target:[['形态月度目标',['shape'],['month'],['amount','qty'],'month','amount','shape'],['型号月度目标',['model'],['month'],['amount','qty','unitTarget'],'month','amount','model']],
     price:[['对标型号与品牌',['benchmark','brand'],[],['meanPrice','minPrice','maxPrice'],'benchmark','meanPrice','brand'],['型号价格变化',['model'],['date'],['meanPrice','recordCount'],'date','meanPrice','model']]
@@ -314,7 +327,7 @@ function filterModal(id){
   modalCleanup=()=>{};
   $('modalActions').onclick=e=>{const action=e.target.closest('[data-modal-action]')?.dataset.modalAction;if(action==='clear'){target.values=[];closeModal();renderAll();}else if(action==='apply'){target.values=[...selected];closeModal();renderAll();}};
 }
-function readSaved(){try{return JSON.parse(localStorage.getItem(savedKey)||'[]')}catch{return [];}}
+function readSaved(){try{const items=JSON.parse(localStorage.getItem(savedKey)||'[]');return Array.isArray(items)?items.filter(item=>datasets[item?.state?.dataset]):[]}catch{return [];}}
 function writeSaved(items){localStorage.setItem(savedKey,JSON.stringify(items));renderSaved();}
 function renderSaved(){const items=readSaved();$('savedViews').innerHTML=items.length?items.map((it,i)=>`<div class="saved-item"><strong>${esc(it.name)}</strong><small>${esc(datasets[it.state.dataset]?.label||'数据集')} · ${esc(it.savedAt||'')}</small><button data-load="${i}">打开</button><button data-delete="${i}">删除</button></div>`).join(''):'<div class="saved-empty">还没有保存视图。搭建好分析后，点击「保存视图」。</div>';}
 function saveModal(){showModal('保存当前视图',`<p>将行列、指标、日期、筛选与图表配置保存到本机浏览器。</p><input type="text" id="viewNameInput" maxlength="40" value="${esc(dataset.label)}分析 · ${new Date().toLocaleDateString('zh-CN')}">`,[{id:'cancel',label:'取消'},{id:'save',label:'保存视图',primary:true}]);$('viewNameInput').focus();$('viewNameInput').select();}
@@ -369,7 +382,7 @@ $('clearDrillBtn').onclick=()=>{drillScope=null;renderDetail();};
 $('resetBtn').onclick=()=>{state=defaultState(dataset);drillScope=null;collapsedRows.clear();renderAll();toast('已恢复该数据集默认分析');};
 $('exportBtn').onclick=exportPivot;$('detailExportBtn').onclick=exportDetail;$('copyBtn').onclick=copyTable;
 $('saveBtn').onclick=saveModal;$('railViews').onclick=()=>toggleViews();$('openViewsBtn').onclick=()=>toggleViews();$('closeViews').onclick=()=>toggleViews(false);
-$('savedViews').onclick=e=>{const load=e.target.closest('[data-load]'),del=e.target.closest('[data-delete]');const items=readSaved();if(load){const it=items[Number(load.dataset.load)];if(!it)return;switchDataset(it.state.dataset);state=validState(dataset,it.state);drillScope=null;collapsedRows.clear();renderAll();toggleViews(false);toast(`已打开「${it.name}」`);}else if(del){items.splice(Number(del.dataset.delete),1);writeSaved(items);toast('视图已删除');}};
+$('savedViews').onclick=async e=>{const load=e.target.closest('[data-load]'),del=e.target.closest('[data-delete]');const items=readSaved();if(load){const it=items[Number(load.dataset.load)];if(!it||!datasets[it.state.dataset]||!await switchDataset(it.state.dataset))return;state=validState(dataset,it.state);drillScope=null;collapsedRows.clear();renderAll();toggleViews(false);toast(`已打开「${it.name}」`);}else if(del){items.splice(Number(del.dataset.delete),1);writeSaved(items);toast('视图已删除');}};
 $('sourceBtn').onclick=sourceModal;$('sourceStripBtn').onclick=sourceModal;$('helpBtn').onclick=helpModal;$('railHelp').onclick=helpModal;$('inlineHelpBtn').onclick=helpModal;
 $('templateBtn').onclick=templateModal;
 $('modalClose').onclick=closeModal;$('overlay').onclick=closeModal;

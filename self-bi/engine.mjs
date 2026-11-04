@@ -1,9 +1,8 @@
 const dim = (id, label, group = '经营维度') => ({ id, label, group, kind: 'dimension' });
 const met = (id, label, format = 'currency', note = '') => ({ id, label, format, note, kind: 'measure' });
 
-export function createDatasets(source, incomeSource) {
+export function createDatasets(source) {
   const product = source.products;
-  const incomeRows = [...incomeSource.prior, ...incomeSource.current];
   const specs = {
     sales: {
       id: 'sales', label: '销售明细', icon: '▦', rows: source.sales,
@@ -28,18 +27,6 @@ export function createDatasets(source, incomeSource) {
         }
       },
       accumulate(b, r) { b.amount += Number(r[5])||0; b.qty += Number(r[6])||0; if(r[7]!==null&&r[7]!==undefined){const a=Number(r[7]);if(Number.isFinite(a))b.accounting+=a;} }
-    },
-    income: {
-      id:'income', label:'收入归集', icon:'◫', rows:incomeRows,
-      timeField:'month', timeMin:incomeSource.meta.priorMonthMin, timeMax:incomeSource.meta.incomeMonthMax,
-      source:'2026 年 1—9 月收入、25 年销售和收入',
-      grain:'审核月份 × 业务部 × 渠道',
-      note:'收入按审核月份归集，销售按支付日期归集；两者不是订单级一一对应，不在此工作台混合求比。',
-      dimensions:[dim('year','年份','时间'),dim('quarter','季度','时间'),dim('month','月份','时间'),dim('business','业务部','经营维度'),dim('channel','渠道','经营维度')],
-      measures:[met('income','收入','currency','审核归集收入'),met('incomeTaxEq','含税等价收入','currency','源表含税等价收入'),met('qty','归集数量','integer','收入源表数量'),met('unitIncome','单台收入','price','收入 ÷ 归集数量'),met('recordCount','记录数','integer','收入归集行数')],
-      defaults:{rows:['business','channel'],cols:['year'],measures:['income','qty','unitIncome'],chart:{type:'bar',x:'business',y:'income',series:'year'}},
-      get(r,id) { const m=r[0]; switch(id) {case 'year':return m.slice(0,4);case 'quarter':return `${m.slice(0,4)} Q${Math.ceil(Number(m.slice(5,7))/3)}`;case 'month':return m;case 'business':return r[1]||'未标注';case 'channel':return r[2]||'未标注';default:return '';} },
-      accumulate(b,r) { b.income+=Number(r[3])||0;b.incomeTaxEq+=Number(r[4])||0;b.qty+=Number(r[5])||0; }
     },
     market: {
       id:'market', label:'奥维市场', icon:'◉', rows:source.ovi,
@@ -81,10 +68,10 @@ export function createDatasets(source, incomeSource) {
   return specs;
 }
 
-export function emptyBucket(){return {recordCount:0,amount:0,qty:0,accounting:0,income:0,incomeTaxEq:0,sales:0,priceSum:0,priceCount:0,minPrice:Infinity,maxPrice:-Infinity};}
+export function emptyBucket(){return {recordCount:0,amount:0,qty:0,accounting:0,sales:0,priceSum:0,priceCount:0,minPrice:Infinity,maxPrice:-Infinity};}
 export function addRow(dataset,bucket,row){bucket.recordCount++;dataset.accumulate(bucket,row);return bucket;}
 export function mergeBucket(target,source){
-  for(const key of ['recordCount','amount','qty','accounting','income','incomeTaxEq','sales','priceSum','priceCount'])target[key]+=source[key];
+  for(const key of ['recordCount','amount','qty','accounting','sales','priceSum','priceCount'])target[key]+=source[key];
   target.minPrice=Math.min(target.minPrice,source.minPrice);
   target.maxPrice=Math.max(target.maxPrice,source.maxPrice);
   return target;
@@ -96,7 +83,6 @@ export function getMetric(dataset,bucket,id,total=emptyBucket()){
     case 'amountShare':return total.amount ? bucket.amount/total.amount : null;
     case 'salesShare':return total.sales ? bucket.sales/total.sales : null;
     case 'avgPrice':return bucket.qty ? (dataset.id==='market'?bucket.sales:bucket.amount)/bucket.qty : null;
-    case 'unitIncome':return bucket.qty ? bucket.income/bucket.qty : null;
     case 'unitTarget':return bucket.qty ? bucket.amount/bucket.qty : null;
     case 'salesIndex':return bucket.qty>0&&bucket.amount>0&&bucket.accounting>0 ? bucket.amount/bucket.accounting : null;
     case 'meanPrice':return bucket.priceCount ? bucket.priceSum/bucket.priceCount : null;
@@ -230,7 +216,7 @@ export function chartDisplay(dataset,chart,xField,yField,{topX=11,topSeries=4,ti
   };
   const points=chosen.map(p=>pointFrom(p.x,p.buckets));
   if(omitted.length){const buckets=new Map();for(const point of omitted)for(const [name,b] of point.buckets){if(!buckets.has(name))buckets.set(name,emptyBucket());mergeBucket(buckets.get(name),b);}points.push(pointFrom('其他类别',buckets));}
-  const basis=dataset.id==='market'?'sales':dataset.id==='income'?'income':dataset.id==='price'?'recordCount':'amount';
+  const basis=dataset.id==='market'?'sales':dataset.id==='price'?'recordCount':'amount';
   const shownTotal=chosen.reduce((sum,p)=>sum+(p.bucket[basis]||0),0),allTotal=chart.all[basis]||0;
   const coverage=allTotal>0?shownTotal/allTotal:null;
   return {points,series,omittedX:omitted.length,omittedSeries:otherSeries.length,timeOmitted:timeAxis?Math.max(0,original.length-chosen.length):0,shownX:chosen.length,totalX:original.length,coverage,basis};

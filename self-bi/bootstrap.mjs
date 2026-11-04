@@ -12,14 +12,13 @@ function loadScript(path) {
 }
 
 try {
-  if (window.parent !== window && window.parent.WATER_HEATER_DATA && window.parent.WATER_HEATER_INCOME_DATA) {
+  if (window.parent !== window && window.parent.WATER_HEATER_DATA) {
     window.WATER_HEATER_DATA = window.parent.WATER_HEATER_DATA;
-    window.WATER_HEATER_INCOME_DATA = window.parent.WATER_HEATER_INCOME_DATA;
+    if (typeof window.parent.ensureOviData === 'function') window.ensureOviData = () => window.parent.ensureOviData();
   } else {
     const dataScript = document.querySelector('meta[name="dashboard-data-script"]')?.content;
     if (!dataScript) throw new Error('缺少销售数据脚本配置');
     await loadScript(dataScript);
-    await loadScript('../data/income-data.js');
   }
   if (window.WATER_HEATER_DATA_READY) await window.WATER_HEATER_DATA_READY;
   await import(`./app.mjs?v=${encodeURIComponent(assetVersion)}`);
