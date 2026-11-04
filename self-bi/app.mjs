@@ -1,4 +1,4 @@
-import {createDatasets,filterRows,pivot,getMetric,chartAggregate,chartDisplay,comparisonPivot,emptyBucket,addRow} from './engine.mjs?v=20261102-092455';
+import {createDatasets,filterRows,pivot,getMetric,chartAggregate,chartDisplay,comparisonPivot,emptyBucket,addRow} from './engine.mjs?v=20261104-133755';
 
 const source=window.WATER_HEATER_DATA,income=window.WATER_HEATER_INCOME_DATA;
 const datasets=createDatasets(source,income);
