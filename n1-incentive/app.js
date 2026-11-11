@@ -1,4 +1,4 @@
-import { summarize } from './engine.mjs?v=20261110-131827';
+import { summarize } from './engine.mjs?v=20261111-150303';
 const $ = (id) => document.getElementById(id);
 const embedded = window.parent !== window && new URLSearchParams(location.search).get('embedded') === '1';
 const localPreview = ['localhost','127.0.0.1'].includes(location.hostname);

@@ -2,13 +2,13 @@
   "use strict";
 
   const baseParts = [
-    "water-heater-data-001b9cb36435-00.txt"
+    "water-heater-data-b3036e590fce-00.txt"
 ];
   const oviParts = [
-    "ovi-data-e86dcd43796c-00.txt",
-    "ovi-data-e86dcd43796c-01.txt",
-    "ovi-data-e86dcd43796c-02.txt",
-    "ovi-data-e86dcd43796c-03.txt"
+    "ovi-data-9b6dd4539966-00.txt",
+    "ovi-data-9b6dd4539966-01.txt",
+    "ovi-data-9b6dd4539966-02.txt",
+    "ovi-data-9b6dd4539966-03.txt"
 ];
   const assetBase = new URL(".", document.currentScript.src);
 
