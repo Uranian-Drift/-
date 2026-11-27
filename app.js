@@ -57,6 +57,7 @@ if (window.WATER_HEATER_DATA_READY) {
     ["overview", "经营总览"],
     ["category", "品类销售"],
     ["channel", "渠道效率"],
+    ["income", "收入经营"],
     ["store", "店铺效率"],
     ["core", "型号效率"],
     ["industry", "行业-奥维"],
@@ -2811,15 +2812,25 @@ if (window.WATER_HEATER_DATA_READY) {
   function renderDashboard() {
     const selfBiActive = state.tab === "selfBi";
     const incentiveActive = state.tab === "incentive";
-    const isolatedActive = selfBiActive || incentiveActive;
+    const incomeActive = state.tab === "income";
+    const isolatedActive = selfBiActive || incentiveActive || incomeActive;
     const selfBiMount = document.getElementById("selfBiMount");
     const incentiveMount = document.getElementById("incentiveMount");
+    const incomeMount = document.getElementById("incomeMount");
     document.getElementById("globalFilterPanel").hidden = isolatedActive;
     content.hidden = isolatedActive;
     selfBiMount.hidden = !selfBiActive;
     incentiveMount.hidden = !incentiveActive;
+    incomeMount.hidden = !incomeActive;
     document.body.classList.toggle("self-bi-active", selfBiActive);
+    document.body.classList.toggle("income-active", incomeActive);
+    if (incomeActive) document.body.classList.remove("overview-active");
     if (!incentiveActive) document.body.classList.remove("incentive-public");
+    if (incomeActive) {
+      if (!incomeMount.childElementCount) loadIncomeTab(incomeMount);
+      if (aiState.open) renderAiPanel();
+      return;
+    }
     if (incentiveActive) {
       const frame = document.getElementById("incentiveFrame");
       if (!frame.hasAttribute("src")) {
@@ -2860,6 +2871,20 @@ if (window.WATER_HEATER_DATA_READY) {
     attachDynamicEvents();
     renderFilterSummary();
     if (aiState.open) renderAiPanel();
+  }
+
+  async function loadIncomeTab(mount) {
+    mount.innerHTML = '<div class="panel" role="status">正在加载收入数据…</div>';
+    try {
+      const moduleUrl = new URL("./income/app.mjs", import.meta.url);
+      moduleUrl.search = new URL(import.meta.url).search;
+      const { mountIncome } = await import(moduleUrl.href);
+      await mountIncome(mount, { sales, salesDateMin: DATA.meta.salesDateMin, salesDateMax: DATA.meta.salesDateMax });
+    } catch (error) {
+      console.error("收入数据加载失败", error);
+      mount.innerHTML = '<div class="panel" role="status">收入数据加载失败。 <button class="reset-action" type="button">重试</button></div>';
+      mount.querySelector("button").addEventListener("click", () => loadIncomeTab(mount), { once: true });
+    }
   }
 
   const AI_BUSINESS_CONTEXT_KEY = "WATER_HEATER_AI_BUSINESS_CONTEXT_V47";
