@@ -2,7 +2,7 @@
   "use strict";
 
   const baseParts = [
-    "water-heater-data-e3831416b412-00.txt"
+    "water-heater-data-f4886601d5cf-00.txt"
 ];
   const oviParts = [
     "ovi-data-9b6dd4539966-00.txt",
